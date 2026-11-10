@@ -15,6 +15,7 @@ import java.util.List;
 
 public final class VisionBrowserClient implements ClientModInitializer {
     private static KeyMapping openBrowser;
+    private static KeyMapping toggleMusicIsland;
     private static final List<RinkuBrowser> tabs = new ArrayList<>();
     private static int activeTab = 0;
 
@@ -27,7 +28,18 @@ public final class VisionBrowserClient implements ClientModInitializer {
                 KeyMapping.Category.register(Identifier.fromNamespaceAndPath("visionbrowser", "main"))
         ));
 
+        toggleMusicIsland = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.visionbrowser.toggle_music_island",
+                InputConstants.Type.KEYSYM,
+                InputConstants.KEY_O,
+                KeyMapping.Category.register(Identifier.fromNamespaceAndPath("visionbrowser", "main"))
+        ));
+        VisionMusicHud.register();
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            while (toggleMusicIsland.consumeClick()) {
+                VisionMusicHud.toggle();
+            }
             while (openBrowser.consumeClick()) {
                 if (client.gui.screen() instanceof VisionBrowserScreen visionScreen) {
                     visionScreen.onClose();

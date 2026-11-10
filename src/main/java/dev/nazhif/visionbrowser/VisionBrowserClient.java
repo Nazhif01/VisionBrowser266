@@ -6,6 +6,7 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.resources.Identifier;
 
 public final class VisionBrowserClient implements ClientModInitializer {
@@ -22,10 +23,10 @@ public final class VisionBrowserClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (openBrowser.consumeClick()) {
-                if (client.gui.screen() instanceof VisionBrowserScreen) {
-                    client.gui.setScreen(null);
-                } else if (client.gui.screen() == null) {
-                    client.gui.setScreen(new VisionBrowserScreen());
+                if (client.gui.screen() instanceof VisionBrowserScreen visionScreen) {
+                    visionScreen.onClose();
+                } else if (client.gui.screen() == null || client.gui.screen() instanceof TitleScreen) {
+                    client.gui.setScreen(new VisionBrowserScreen(client.gui.screen()));
                 }
             }
         });

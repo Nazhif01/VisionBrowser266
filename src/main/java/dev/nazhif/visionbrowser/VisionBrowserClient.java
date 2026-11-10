@@ -10,9 +10,14 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.resources.Identifier;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 public final class VisionBrowserClient implements ClientModInitializer {
     private static KeyMapping openBrowser;
-    private static RinkuBrowser sharedBrowser;
+    private static final List<RinkuBrowser> tabs = new ArrayList<>();
+    private static int activeTab = 0;
 
     @Override
     public void onInitializeClient() {
@@ -40,9 +45,35 @@ public final class VisionBrowserClient implements ClientModInitializer {
 
     static synchronized RinkuBrowser getOrCreateBrowser(String startUrl) {
         if (!ensureBrowserRuntime()) return null;
-        if (sharedBrowser == null) {
-            sharedBrowser = Rinku.createBrowser(startUrl, true);
+        if (tabs.isEmpty()) {
+            RinkuBrowser first = Rinku.createBrowser(startUrl, true);
+            if (first != null) tabs.add(first);
         }
-        return sharedBrowser;
+        if (tabs.isEmpty()) return null;
+        activeTab = Math.max(0, Math.min(activeTab, tabs.size() - 1));
+        return tabs.get(activeTab);
+    }
+
+    static synchronized RinkuBrowser createTab(String startUrl) {
+        if (!ensureBrowserRuntime()) return null;
+        RinkuBrowser tab = Rinku.createBrowser(startUrl, true);
+        if (tab != null) {
+            tabs.add(tab);
+            activeTab = tabs.size() - 1;
+        }
+        return tab;
+    }
+
+    static synchronized RinkuBrowser selectTab(int index) {
+        if (index >= 0 && index < tabs.size()) activeTab = index;
+        return tabs.isEmpty() ? null : tabs.get(activeTab);
+    }
+
+    static synchronized int getTabCount() {
+        return tabs.size();
+    }
+
+    static synchronized int getActiveTab() {
+        return activeTab;
     }
 }

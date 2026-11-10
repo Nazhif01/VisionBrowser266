@@ -2,6 +2,7 @@ package dev.nazhif.visionbrowser;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import de.keksuccino.rinku.Rinku;
+import de.keksuccino.rinku.RinkuBrowser;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
@@ -11,6 +12,7 @@ import net.minecraft.resources.Identifier;
 
 public final class VisionBrowserClient implements ClientModInitializer {
     private static KeyMapping openBrowser;
+    private static RinkuBrowser sharedBrowser;
 
     @Override
     public void onInitializeClient() {
@@ -34,5 +36,13 @@ public final class VisionBrowserClient implements ClientModInitializer {
 
     static boolean ensureBrowserRuntime() {
         return Rinku.isInitialized() || (Rinku.isInitializationAllowed() && Rinku.initialize());
+    }
+
+    static synchronized RinkuBrowser getOrCreateBrowser(String startUrl) {
+        if (!ensureBrowserRuntime()) return null;
+        if (sharedBrowser == null) {
+            sharedBrowser = Rinku.createBrowser(startUrl, true);
+        }
+        return sharedBrowser;
     }
 }

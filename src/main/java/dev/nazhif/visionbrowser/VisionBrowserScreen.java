@@ -39,7 +39,8 @@ public final class VisionBrowserScreen extends Screen {
             if (browser == null) {
                 browser = Rinku.createBrowser(HOME_URL, true);
                 if (browser != null) {
-                    browser.resize(Math.max(1, width * 2), Math.max(1, (height - 34) * 2));
+                    int scale = Math.max(1, (int) minecraft.getWindow().getGuiScale());
+                    browser.resize(Math.max(1, width * scale), Math.max(1, (height - 32) * scale));
                     status = "Loading " + HOME_URL;
                 } else {
                     status = "Could not create browser.";
@@ -76,13 +77,17 @@ public final class VisionBrowserScreen extends Screen {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 
+    private int browserMouseX(double x) { return (int) (x * minecraft.getWindow().getGuiScale()); }
+
+    private int browserMouseY(double y) { return (int) ((y - 32) * minecraft.getWindow().getGuiScale()); }
+
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (browser != null && event.y() >= 32) {
             focused = true;
             pressedButton = event.button();
             browser.setFocus(true);
-            browser.sendMousePress((int) event.x(), (int) event.y() - 32, event.button());
+            browser.sendMousePress(browserMouseX(event.x()), browserMouseY(event.y()), event.button());
             return true;
         }
         focused = false;
@@ -93,7 +98,7 @@ public final class VisionBrowserScreen extends Screen {
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
         if (browser != null && pressedButton != -1) {
-            browser.sendMouseRelease((int) event.x(), (int) event.y() - 32, event.button());
+            browser.sendMouseRelease(browserMouseX(event.x()), browserMouseY(event.y()), event.button());
             pressedButton = -1;
             return true;
         }
@@ -102,14 +107,14 @@ public final class VisionBrowserScreen extends Screen {
 
     @Override
     public void mouseMoved(double x, double y) {
-        if (browser != null && y >= 32) browser.sendMouseMove((int) x, (int) y - 32);
+        if (browser != null && y >= 32) browser.sendMouseMove(browserMouseX(x), browserMouseY(y));
         super.mouseMoved(x, y);
     }
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
         if (browser != null && pressedButton != -1) {
-            browser.sendMouseMove((int) event.x(), (int) event.y() - 32);
+            browser.sendMouseMove(browserMouseX(event.x()), browserMouseY(event.y()));
             return true;
         }
         return super.mouseDragged(event, dx, dy);
@@ -118,7 +123,7 @@ public final class VisionBrowserScreen extends Screen {
     @Override
     public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
         if (browser != null && y >= 32) {
-            browser.sendMouseWheel((int) x, (int) y - 32, vertical, 0);
+            browser.sendMouseWheel(browserMouseX(x), browserMouseY(y), vertical, 0);
             return true;
         }
         return super.mouseScrolled(x, y, horizontal, vertical);

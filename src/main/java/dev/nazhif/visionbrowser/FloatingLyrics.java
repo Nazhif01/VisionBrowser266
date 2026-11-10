@@ -89,7 +89,7 @@ final class FloatingLyrics {
     private static void render(GuiGraphicsExtractor graphics, DeltaTracker tickCounter) {
         if (!enabled) return;
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.options.hideGui) return;
+        if (client.player == null) return;
         List<Line> current = lines;
         int screenWidth = client.getWindow().getGuiScaledWidth();
         int screenHeight = client.getWindow().getGuiScaledHeight();

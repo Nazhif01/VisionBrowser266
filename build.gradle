@@ -10,14 +10,14 @@ base {
 }
 
 repositories {
-    maven { url = "https://keksuccino.github.io/maven/" }
+    maven { url = "https://www.cursemaven.com" }
 }
 
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-    implementation "de.keksuccino:rinku-fabric:${project.rinku_version}-${project.minecraft_version}"
+    implementation "curse.maven:rinku-1366156:8917468"
 }
 
 tasks.withType(JavaCompile).configureEach {

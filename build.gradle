@@ -11,6 +11,7 @@ base {
 
 repositories {
     maven { url = "https://www.cursemaven.com" }
+    mavenCentral()
 }
 
 dependencies {
@@ -18,6 +19,7 @@ dependencies {
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
     implementation "curse.maven:rinku-1366156:8917468"
+    implementation "org.endlesssource.mediainterface:all:3.0.0"
 }
 
 tasks.withType(JavaCompile).configureEach {

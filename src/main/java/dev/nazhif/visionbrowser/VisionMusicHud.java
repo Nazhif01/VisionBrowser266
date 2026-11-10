@@ -2,13 +2,19 @@ package dev.nazhif.visionbrowser;
 
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.DeltaTracker;
-import net.minecraft.network.chat.Component;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.resources.Identifier;
+
+import java.awt.Robot;
+import java.awt.AWTException;
+import java.awt.event.KeyEvent;
 
 public final class VisionMusicHud {
     private static boolean visible = true;
+    private static final int ISLAND_WIDTH = 196;
+    private static final int ISLAND_HEIGHT = 38;
+    private static final int TOP = 8;
 
     private VisionMusicHud() { }
 
@@ -21,6 +27,37 @@ public final class VisionMusicHud {
 
     public static void toggle() {
         visible = !visible;
+    }
+
+    public static boolean isVisible() {
+        return visible;
+    }
+
+    public static boolean handleClick(double mouseX, double mouseY, int button) {
+        if (!visible || button != 0) return false;
+        Minecraft minecraft = Minecraft.getInstance();
+        int x = (minecraft.getWindow().getGuiScaledWidth() - ISLAND_WIDTH) / 2;
+        int y = TOP;
+        if (mouseY < y || mouseY >= y + ISLAND_HEIGHT || mouseX < x || mouseX >= x + ISLAND_WIDTH) return false;
+
+        if (mouseX >= x + 118 && mouseX < x + 143) {
+            sendMediaKey(KeyEvent.VK_MEDIA_PREVIOUS_TRACK);
+        } else if (mouseX >= x + 145 && mouseX < x + 169) {
+            sendMediaKey(KeyEvent.VK_MEDIA_PLAY_PAUSE);
+        } else if (mouseX >= x + 171 && mouseX < x + 194) {
+            sendMediaKey(KeyEvent.VK_MEDIA_NEXT_TRACK);
+        }
+        return true;
+    }
+
+    private static void sendMediaKey(int keyCode) {
+        try {
+            Robot robot = new Robot();
+            robot.keyPress(keyCode);
+            robot.keyRelease(keyCode);
+        } catch (AWTException | IllegalArgumentException | SecurityException ignored) {
+            // Media-key support depends on the operating system and active media player.
+        }
     }
 
     private static void roundedPanel(GuiGraphicsExtractor graphics, int x, int y, int w, int h, int radius, int color) {
@@ -39,25 +76,24 @@ public final class VisionMusicHud {
 
     private static void render(GuiGraphicsExtractor graphics, DeltaTracker tickCounter) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (!visible || minecraft.player == null || minecraft.level == null || minecraft.gui.screen() != null) return;
+        // Keep the island visible over chat and other screens; it is part of the HUD.
+        if (!visible || minecraft.player == null || minecraft.level == null) return;
 
         int screenWidth = minecraft.getWindow().getGuiScaledWidth();
-        int width = 260;
-        int height = 48;
-        int x = (screenWidth - width) / 2;
-        int y = 12;
+        int x = (screenWidth - ISLAND_WIDTH) / 2;
+        int y = TOP;
+        int width = ISLAND_WIDTH;
+        int height = ISLAND_HEIGHT;
 
-        // Compact Dynamic-Island-inspired media capsule. Playback integration is a later milestone.
-        roundedPanel(graphics, x - 2, y - 2, width + 4, height + 4, 25, 0x553D9ACB);
-        roundedPanel(graphics, x, y, width, height, 23, 0xE9151D2A);
-        roundedPanel(graphics, x + 1, y + 1, width - 2, height - 2, 22, 0xD92A3545);
-        roundedPanel(graphics, x + 10, y + 8, 32, 32, 9, 0xFF354D69);
-        graphics.text(minecraft.font, "♫", x + 21, y + 18, 0xFFBCEBFF, false);
-        graphics.text(minecraft.font, "VISION MUSIC", x + 51, y + 8, 0xFFB8DDF7, false);
-        graphics.text(minecraft.font, "Waiting for media session", x + 51, y + 22, 0xFFEAF2FA, false);
-        graphics.text(minecraft.font, "◀", x + 177, y + 17, 0xFFDCEBFA, false);
-        graphics.text(minecraft.font, "▶", x + 203, y + 17, 0xFFFFFFFF, false);
-        graphics.text(minecraft.font, "▶|", x + 228, y + 17, 0xFFDCEBFA, false);
-        graphics.fill(x + 51, y + 39, x + width - 12, y + 40, 0x668CAAC8);
+        roundedPanel(graphics, x - 2, y - 2, width + 4, height + 4, 21, 0x553D9ACB);
+        roundedPanel(graphics, x, y, width, height, 19, 0xE9151D2A);
+        roundedPanel(graphics, x + 1, y + 1, width - 2, height - 2, 18, 0xD92A3545);
+        roundedPanel(graphics, x + 7, y + 7, 24, 24, 8, 0xFF354D69);
+        graphics.text(minecraft.font, "♫", x + 15, y + 12, 0xFFBCEBFF, false);
+        graphics.text(minecraft.font, "MEDIA CONTROLS", x + 37, y + 7, 0xFFB8DDF7, false);
+        graphics.text(minecraft.font, "System playback", x + 37, y + 20, 0xFFEAF2FA, false);
+        graphics.text(minecraft.font, "◀", x + 124, y + 13, 0xFFDCEBFA, false);
+        graphics.text(minecraft.font, "▶", x + 150, y + 13, 0xFFFFFFFF, false);
+        graphics.text(minecraft.font, "▶|", x + 174, y + 13, 0xFFDCEBFA, false);
     }
 }

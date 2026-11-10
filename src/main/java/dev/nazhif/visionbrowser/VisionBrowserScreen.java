@@ -23,7 +23,7 @@ public final class VisionBrowserScreen extends Screen {
     private final Screen parentScreen;
     private RinkuBrowser browser;
     private EditBox addressBar;
-    private int windowX, windowY, windowW, windowH;
+    private static int windowX, windowY, windowW, windowH;
     private boolean draggingWindow;
     private boolean resizingWindow;
     private double dragOffsetX, dragOffsetY;
@@ -222,6 +222,7 @@ public final class VisionBrowserScreen extends Screen {
         if (draggingWindow || resizingWindow) {
             draggingWindow = false;
             resizingWindow = false;
+            rebuild();
             return true;
         }
         if (browser != null && pressedButton != -1) {

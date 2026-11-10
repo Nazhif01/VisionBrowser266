@@ -16,6 +16,7 @@ import java.util.List;
 public final class VisionBrowserClient implements ClientModInitializer {
     private static KeyMapping openBrowser;
     private static KeyMapping toggleMusicIsland;
+    private static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("visionbrowser", "main"));
     private static final List<RinkuBrowser> tabs = new ArrayList<>();
     private static int activeTab = 0;
 

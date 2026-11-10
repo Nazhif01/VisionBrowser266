@@ -72,7 +72,7 @@ public final class VisionMusicHud {
         String artist = VisionMediaService.artist();
         if (title.isBlank()) {
             graphics.text(minecraft.font, "VISION MUSIC", x + 38, y + 8, 0xFFB8DDF7, false);
-            graphics.text(minecraft.font, VisionMediaService.isConnected() ? "No media playing" : "Media service unavailable",
+            graphics.text(minecraft.font, shorten(VisionMediaService.status(), 25),
                     x + 38, y + 22, 0xFFEAF2FA, false);
         } else {
             graphics.text(minecraft.font, shorten(title, 17), x + 38, y + 7, 0xFFFFFFFF, false);

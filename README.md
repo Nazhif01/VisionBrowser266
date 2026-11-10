@@ -1,19 +1,22 @@
 # Vision Browser 26.3
 
-A client-side Fabric mod project for Minecraft Java 26.3. The goal is to create spatial browser windows inspired by Apple visionOS, using Rinku as the Chromium browser engine.
+A client-side Fabric mod for Minecraft Java 26.3. The goal is to create spatial browser windows inspired by Apple visionOS, using Rinku as the Chromium browser engine.
 
 ## Target features
 
-- Floating browser windows in the Minecraft world
+- True world-space floating browser windows
 - Frosted-glass panels, rounded corners, and subtle rim lighting
-- Drag, resize, and close controls
+- Grab, move, resize, and close windows in 3D space
 - Mouse, scroll, and keyboard input forwarded to the embedded browser
+- Multiple independent browser windows and tabs
 
 ## Development status
 
-**Milestone 0:** project scaffold and automated build pipeline.
+- **Milestone 0: Build and browser foundation.** Fabric 26.3, Java 25, Rinku setup, browser screen, navigation, tabs, and browser input.
+- **Milestone 1: World-space window prototype.** Next: render a browser texture as a panel in the Minecraft world, anchor it in front of the player, and route ray-picked mouse input into the browser.
+- **Milestone 2: Spatial interaction and visual polish.** Grab and move panels, resize them in 3D, close controls, frosted-glass styling, and multiple panels.
 
-The first build validates the Minecraft 26.3, Fabric, Java 25, and Rinku dependency setup. Spatial rendering and browser integration are subsequent milestones.
+Dynamic Island and music-control work has been removed to keep development focused on the spatial browser.
 
 ## Build
 

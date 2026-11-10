@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "visionbrowser",
+  "version": "\${version}",
+  "name": "Vision Browser",
+  "description": "Spatial glass browser windows inspired by visionOS.",
+  "authors": ["Nazhif01"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.nazhif.visionbrowser.VisionBrowserClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.20.1",
+    "minecraft": "26.3",
+    "java": ">=25",
+    "fabric-api": "*",
+    "rinku": "*"
+  }
+}

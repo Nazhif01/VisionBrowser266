@@ -6,8 +6,6 @@ import de.keksuccino.rinku.RinkuBrowser;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
-import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
-import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.resources.Identifier;
@@ -17,10 +15,6 @@ import java.util.List;
 
 public final class VisionBrowserClient implements ClientModInitializer {
     private static KeyMapping openBrowser;
-    private static KeyMapping toggleMusicIsland;
-    private static KeyMapping mediaPrevious;
-    private static KeyMapping mediaToggle;
-    private static KeyMapping mediaNext;
     private static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("visionbrowser", "main"));
     private static final List<RinkuBrowser> tabs = new ArrayList<>();
     private static int activeTab = 0;
@@ -34,33 +28,7 @@ public final class VisionBrowserClient implements ClientModInitializer {
                 CATEGORY
         ));
 
-        toggleMusicIsland = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.visionbrowser.toggle_music_island",
-                InputConstants.Type.KEYBOARD,
-                InputConstants.KEY_O,
-                CATEGORY
-        ));
-        mediaPrevious = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.visionbrowser.media_previous", InputConstants.Type.KEYBOARD, 91, CATEGORY));
-        mediaToggle = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.visionbrowser.media_toggle", InputConstants.Type.KEYBOARD, InputConstants.KEY_P, CATEGORY));
-        mediaNext = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.visionbrowser.media_next", InputConstants.Type.KEYBOARD, 93, CATEGORY));
-        VisionMusicHud.register();
-        VisionMediaService.start();
-        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
-            ScreenMouseEvents.allowMouseClick(screen).register((currentScreen, event) ->
-                    !VisionMusicHud.handleClick(event.x(), event.y(), event.button())
-            );
-        });
-
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            while (toggleMusicIsland.consumeClick()) {
-                VisionMusicHud.toggle();
-            }
-            while (mediaPrevious.consumeClick()) VisionMediaService.previous();
-            while (mediaToggle.consumeClick()) VisionMediaService.togglePlayback();
-            while (mediaNext.consumeClick()) VisionMediaService.next();
             while (openBrowser.consumeClick()) {
                 if (client.gui.screen() instanceof VisionBrowserScreen visionScreen) {
                     visionScreen.onClose();
@@ -73,12 +41,6 @@ public final class VisionBrowserClient implements ClientModInitializer {
 
     static boolean ensureBrowserRuntime() {
         return Rinku.isInitialized() || (Rinku.isInitializationAllowed() && Rinku.initialize());
-    }
-
-    static synchronized RinkuBrowser getActiveBrowser() {
-        if (tabs.isEmpty()) return null;
-        activeTab = Math.max(0, Math.min(activeTab, tabs.size() - 1));
-        return tabs.get(activeTab);
     }
 
     static synchronized RinkuBrowser getOrCreateBrowser(String startUrl) {

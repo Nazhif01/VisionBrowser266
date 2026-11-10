@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 import net.minecraft.client.KeyMapping;
+import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.resources.Identifier;
 
@@ -41,11 +42,11 @@ public final class VisionBrowserClient implements ClientModInitializer {
                 CATEGORY
         ));
         mediaPrevious = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.visionbrowser.media_previous", InputConstants.Type.KEYBOARD, InputConstants.KEY_LEFT_BRACKET, CATEGORY));
+                "key.visionbrowser.media_previous", InputConstants.Type.KEYBOARD, GLFW.GLFW_KEY_LEFT_BRACKET, CATEGORY));
         mediaToggle = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.visionbrowser.media_toggle", InputConstants.Type.KEYBOARD, InputConstants.KEY_P, CATEGORY));
         mediaNext = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.visionbrowser.media_next", InputConstants.Type.KEYBOARD, InputConstants.KEY_RIGHT_BRACKET, CATEGORY));
+                "key.visionbrowser.media_next", InputConstants.Type.KEYBOARD, GLFW.GLFW_KEY_RIGHT_BRACKET, CATEGORY));
         VisionMusicHud.register();
         VisionMediaService.start();
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {

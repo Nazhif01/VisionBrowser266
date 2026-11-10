@@ -11,7 +11,6 @@ import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 public final class VisionBrowserClient implements ClientModInitializer {
@@ -48,6 +47,7 @@ public final class VisionBrowserClient implements ClientModInitializer {
         if (tabs.isEmpty()) {
             RinkuBrowser first = Rinku.createBrowser(startUrl, true);
             if (first != null) tabs.add(first);
+            activeTab = 0;
         }
         if (tabs.isEmpty()) return null;
         activeTab = Math.max(0, Math.min(activeTab, tabs.size() - 1));
@@ -66,6 +66,24 @@ public final class VisionBrowserClient implements ClientModInitializer {
 
     static synchronized RinkuBrowser selectTab(int index) {
         if (index >= 0 && index < tabs.size()) activeTab = index;
+        return tabs.isEmpty() ? null : tabs.get(activeTab);
+    }
+
+    static synchronized RinkuBrowser closeTab(int index, String fallbackUrl) {
+        if (index < 0 || index >= tabs.size()) return null;
+        RinkuBrowser removed = tabs.remove(index);
+        try {
+            removed.close();
+        } catch (Throwable ignored) { }
+        if (tabs.isEmpty()) {
+            RinkuBrowser replacement = Rinku.createBrowser(fallbackUrl, true);
+            if (replacement != null) tabs.add(replacement);
+            activeTab = 0;
+        } else if (activeTab > index) {
+            activeTab--;
+        } else if (activeTab >= tabs.size()) {
+            activeTab = tabs.size() - 1;
+        }
         return tabs.isEmpty() ? null : tabs.get(activeTab);
     }
 

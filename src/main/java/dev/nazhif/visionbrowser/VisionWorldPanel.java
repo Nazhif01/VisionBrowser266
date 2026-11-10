@@ -43,8 +43,9 @@ final class VisionWorldPanel {
     private VisionWorldPanel() {}
 
     static void register() {
-        LevelExtractionEvents.END_EXTRACTION.register(VisionWorldPanel::extract);
-        LevelRenderEvents.AFTER_TRANSLUCENT_TERRAIN.register(VisionWorldPanel::draw);
+        // World rendering is temporarily disabled while the Minecraft 26.3
+        // RenderPearl pass lifecycle is being corrected. This prevents the
+        // panel from uploading GPU buffers inside an active render pass.
     }
 
     private static void extract(LevelExtractionContext context) {

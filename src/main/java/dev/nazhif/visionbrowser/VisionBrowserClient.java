@@ -30,7 +30,7 @@ public final class VisionBrowserClient implements ClientModInitializer {
 
         toggleMusicIsland = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.visionbrowser.toggle_music_island",
-                InputConstants.Type.KEYSYM,
+                InputConstants.Type.KEYBOARD,
                 InputConstants.KEY_O,
                 KeyMapping.Category.register(Identifier.fromNamespaceAndPath("visionbrowser", "main"))
         ));

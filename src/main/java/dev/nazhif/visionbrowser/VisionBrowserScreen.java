@@ -171,7 +171,7 @@ public final class VisionBrowserScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         // Rounded layered glass shell with a brighter visionOS-style toolbar.
         roundedRect(graphics, windowX - 4, windowY - 4, windowW + 8, windowH + 8, 20, 0x403B8FC4);
-        roundedRect(graphics, windowX, windowY, windowW, windowH, 18, 0xD9141D2B);
+        roundedRect(graphics, windowX, windowY, windowW, windowH, 18, 0xFF141D2B);
         roundedRect(graphics, windowX + 1, windowY + 1, windowW - 2, HEADER + 3, 16, 0xE52D4661);
         roundedRect(graphics, windowX + 9, windowY + 5, windowW - 18, 25, 12, 0x665D7898);
         graphics.fill(windowX + 18, windowY + 2, windowX + windowW - 18, windowY + 3, 0x99E4F4FF);
@@ -194,13 +194,13 @@ public final class VisionBrowserScreen extends Screen {
         // Mask the browser viewport corners to match the rounded glass shell.
         int pageY = windowY + HEADER;
         int pageH = windowH - HEADER;
-        int radius = 13;
+        int radius = 18;
         for (int row = 0; row < radius; row++) {
             int inset = radius - (int) Math.floor(Math.sqrt(radius * radius - (radius - row - 0.5) * (radius - row - 0.5)));
-            graphics.fill(windowX, pageY + row, windowX + inset, pageY + row + 1, 0xD9141D2B);
-            graphics.fill(windowX + windowW - inset, pageY + row, windowX + windowW, pageY + row + 1, 0xD9141D2B);
-            graphics.fill(windowX, pageY + pageH - row - 1, windowX + inset, pageY + pageH - row, 0xD9141D2B);
-            graphics.fill(windowX + windowW - inset, pageY + pageH - row - 1, windowX + windowW, pageY + pageH - row, 0xD9141D2B);
+            graphics.fill(windowX, pageY + row, windowX + inset, pageY + row + 1, 0xFF141D2B);
+            graphics.fill(windowX + windowW - inset, pageY + row, windowX + windowW, pageY + row + 1, 0xFF141D2B);
+            graphics.fill(windowX, pageY + pageH - row - 1, windowX + inset, pageY + pageH - row, 0xFF141D2B);
+            graphics.fill(windowX + windowW - inset, pageY + pageH - row - 1, windowX + windowW, pageY + pageH - row, 0xFF141D2B);
         }
         // Small resize grip in the bottom-right corner.
         graphics.fill(windowX + windowW - 12, windowY + windowH - 3,

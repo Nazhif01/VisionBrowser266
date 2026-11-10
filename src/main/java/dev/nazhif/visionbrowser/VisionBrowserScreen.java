@@ -29,6 +29,8 @@ public final class VisionBrowserScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        // Ensure first-person mouse capture is released while the browser screen is open.
+        minecraft.mouseHandler.releaseMouse();
         try {
             if (!VisionBrowserClient.ensureBrowserRuntime()) {
                 status = "Rinku could not be initialized. Check that Rinku is installed.";

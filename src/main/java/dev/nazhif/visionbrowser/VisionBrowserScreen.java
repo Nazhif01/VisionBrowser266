@@ -43,22 +43,28 @@ public final class VisionBrowserScreen extends Screen {
             browser = null;
         }
 
-        int tabCount = VisionBrowserClient.getTabCount();
         int tabX = 12;
-        for (int i = 0; i < tabCount; i++) {
+        for (int i = 0; i < VisionBrowserClient.getTabCount(); i++) {
             final int tabIndex = i;
-            int buttonWidth = 48;
+            boolean active = i == VisionBrowserClient.getActiveTab();
             addRenderableWidget(Button.builder(
-                    Component.literal((i == VisionBrowserClient.getActiveTab() ? "• " : "") + (i + 1)),
+                    Component.literal((active ? "• " : "") + (i + 1)),
                     button -> switchTab(tabIndex)
-            ).bounds(tabX, 34, buttonWidth, 20).build());
-            tabX += buttonWidth + 4;
+            ).bounds(tabX, 34, 38, 20).build());
+            addRenderableWidget(Button.builder(Component.literal("×"), button -> closeTab(tabIndex))
+                    .bounds(tabX + 39, 34, 20, 20).build());
+            tabX += 63;
         }
 
         addRenderableWidget(Button.builder(Component.literal("+"), button -> addTab())
                 .bounds(tabX, 34, 24, 20).build());
 
-        addressBar = addRenderableWidget(new EditBox(font, 132, 7, Math.max(80, width - 260), 18, Component.literal("Search or enter URL")));
+        addRenderableWidget(Button.builder(Component.literal("‹"), button -> navigateBack())
+                .bounds(132, 7, 24, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("›"), button -> navigateForward())
+                .bounds(160, 7, 24, 20).build());
+
+        addressBar = addRenderableWidget(new EditBox(font, 190, 7, Math.max(80, width - 205), 18, Component.literal("Search or enter URL")));
         addressBar.setMaxLength(2048);
         addressBar.setValue(HOME_URL);
         addressBar.setHint(Component.literal("Search Google or enter URL"));
@@ -72,6 +78,19 @@ public final class VisionBrowserScreen extends Screen {
     private void addTab() {
         VisionBrowserClient.createTab(HOME_URL);
         minecraft.gui.setScreen(new VisionBrowserScreen(parentScreen));
+    }
+
+    private void closeTab(int index) {
+        VisionBrowserClient.closeTab(index, HOME_URL);
+        minecraft.gui.setScreen(new VisionBrowserScreen(parentScreen));
+    }
+
+    private void navigateBack() {
+        if (browser != null) browser.goBack();
+    }
+
+    private void navigateForward() {
+        if (browser != null) browser.goForward();
     }
 
     private void navigateFromAddressBar() {
@@ -212,7 +231,6 @@ public final class VisionBrowserScreen extends Screen {
 
     @Override
     public void onClose() {
-        // Keep all browser tabs alive while Minecraft is in the foreground.
         minecraft.gui.setScreen(parentScreen);
     }
 
@@ -223,7 +241,6 @@ public final class VisionBrowserScreen extends Screen {
 
     @Override
     public void removed() {
-        // Browser tabs are intentionally retained for background playback.
         super.removed();
     }
 }

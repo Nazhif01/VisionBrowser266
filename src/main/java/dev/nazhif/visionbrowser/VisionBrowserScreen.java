@@ -19,9 +19,14 @@ import java.nio.charset.StandardCharsets;
 
 public final class VisionBrowserScreen extends Screen {
     private static final String HOME_URL = "https://www.google.com";
+    private static final int HEADER = 58;
     private final Screen parentScreen;
     private RinkuBrowser browser;
     private EditBox addressBar;
+    private int windowX, windowY, windowW, windowH;
+    private boolean draggingWindow;
+    private boolean resizingWindow;
+    private double dragOffsetX, dragOffsetY;
     private int pressedButton = -1;
 
     public VisionBrowserScreen(Screen parentScreen) {
@@ -33,56 +38,82 @@ public final class VisionBrowserScreen extends Screen {
     protected void init() {
         super.init();
         minecraft.mouseHandler.releaseMouse();
+        if (windowW <= 0 || windowH <= 0) {
+            windowW = Math.min(900, Math.max(520, width - 100));
+            windowH = Math.min(600, Math.max(360, height - 100));
+            windowX = (width - windowW) / 2;
+            windowY = (height - windowH) / 2;
+        }
+        clampWindow();
         try {
             browser = VisionBrowserClient.getOrCreateBrowser(HOME_URL);
-            if (browser != null) {
-                int scale = Math.max(1, (int) minecraft.getWindow().getGuiScale());
-                browser.resize(Math.max(1, width * scale), Math.max(1, (height - 58) * scale));
-            }
+            resizeBrowser();
         } catch (Throwable ignored) {
             browser = null;
         }
 
-        int tabX = 12;
+        int tabX = windowX + 12;
         for (int i = 0; i < VisionBrowserClient.getTabCount(); i++) {
             final int tabIndex = i;
             boolean active = i == VisionBrowserClient.getActiveTab();
             addRenderableWidget(Button.builder(
                     Component.literal((active ? "• " : "") + (i + 1)),
                     button -> switchTab(tabIndex)
-            ).bounds(tabX, 34, 38, 20).build());
+            ).bounds(tabX, windowY + 34, 38, 20).build());
             addRenderableWidget(Button.builder(Component.literal("×"), button -> closeTab(tabIndex))
-                    .bounds(tabX + 39, 34, 20, 20).build());
+                    .bounds(tabX + 39, windowY + 34, 20, 20).build());
             tabX += 63;
         }
-
         addRenderableWidget(Button.builder(Component.literal("+"), button -> addTab())
-                .bounds(tabX, 34, 24, 20).build());
+                .bounds(tabX, windowY + 34, 24, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("‹"), button -> navigateBack())
-                .bounds(132, 7, 24, 20).build());
+                .bounds(windowX + 12, windowY + 7, 24, 20).build());
         addRenderableWidget(Button.builder(Component.literal("›"), button -> navigateForward())
-                .bounds(160, 7, 24, 20).build());
+                .bounds(windowX + 40, windowY + 7, 24, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("□"), button -> toggleSize())
+                .bounds(windowX + windowW - 58, windowY + 7, 22, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("×"), button -> onClose())
+                .bounds(windowX + windowW - 30, windowY + 7, 22, 20).build());
 
-        addressBar = addRenderableWidget(new EditBox(font, 190, 7, Math.max(80, width - 205), 18, Component.literal("Search or enter URL")));
+        addressBar = addRenderableWidget(new EditBox(font, windowX + 70, windowY + 7,
+                Math.max(100, windowW - 200), 18, Component.literal("Search or enter URL")));
         addressBar.setMaxLength(2048);
         addressBar.setValue(HOME_URL);
         addressBar.setHint(Component.literal("Search Google or enter URL"));
     }
 
+    private void clampWindow() {
+        windowW = Math.max(420, Math.min(windowW, width - 24));
+        windowH = Math.max(280, Math.min(windowH, height - 24));
+        windowX = Math.max(12, Math.min(windowX, width - windowW - 12));
+        windowY = Math.max(12, Math.min(windowY, height - windowH - 12));
+    }
+
+    private void resizeBrowser() {
+        if (browser != null) {
+            int scale = Math.max(1, (int) minecraft.getWindow().getGuiScale());
+            browser.resize(Math.max(1, windowW * scale), Math.max(1, (windowH - HEADER) * scale));
+        }
+    }
+
+    private void rebuild() {
+        minecraft.gui.setScreen(new VisionBrowserScreen(parentScreen));
+    }
+
     private void switchTab(int index) {
         VisionBrowserClient.selectTab(index);
-        minecraft.gui.setScreen(new VisionBrowserScreen(parentScreen));
+        rebuild();
     }
 
     private void addTab() {
         VisionBrowserClient.createTab(HOME_URL);
-        minecraft.gui.setScreen(new VisionBrowserScreen(parentScreen));
+        rebuild();
     }
 
     private void closeTab(int index) {
         VisionBrowserClient.closeTab(index, HOME_URL);
-        minecraft.gui.setScreen(new VisionBrowserScreen(parentScreen));
+        rebuild();
     }
 
     private void navigateBack() {
@@ -93,18 +124,29 @@ public final class VisionBrowserScreen extends Screen {
         if (browser != null) browser.goForward();
     }
 
+    private void toggleSize() {
+        if (windowW < width - 40 || windowH < height - 40) {
+            windowW = width - 24;
+            windowH = height - 24;
+            windowX = 12;
+            windowY = 12;
+        } else {
+            windowW = Math.min(900, width - 100);
+            windowH = Math.min(600, height - 100);
+            windowX = (width - windowW) / 2;
+            windowY = (height - windowH) / 2;
+        }
+        rebuild();
+    }
+
     private void navigateFromAddressBar() {
         if (browser == null || addressBar == null) return;
         String input = addressBar.getValue().trim();
         if (input.isEmpty()) return;
         String target;
-        if (input.contains("://") || input.startsWith("about:")) {
-            target = input;
-        } else if (input.contains(".") && !input.contains(" ")) {
-            target = "https://" + input;
-        } else {
-            target = "https://www.google.com/search?q=" + URLEncoder.encode(input, StandardCharsets.UTF_8);
-        }
+        if (input.contains("://") || input.startsWith("about:")) target = input;
+        else if (input.contains(".") && !input.contains(" ")) target = "https://" + input;
+        else target = "https://www.google.com/search?q=" + URLEncoder.encode(input, StandardCharsets.UTF_8);
         browser.loadURL(target);
         browser.setFocus(true);
         setFocused(null);
@@ -112,38 +154,63 @@ public final class VisionBrowserScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fill(0, 0, width, height, 0xFF10131A);
-        graphics.fill(0, 0, width, 58, 0xE8232935);
-        graphics.text(font, "VISION BROWSER", 12, 11, 0xFFEAF1FF, false);
+        // Leave the Minecraft world visible behind the floating browser panel.
+        graphics.fill(windowX, windowY, windowX + windowW, windowY + windowH, 0xF0181D27);
+        graphics.fill(windowX, windowY, windowX + windowW, windowY + HEADER, 0xF02B3444);
+        graphics.fill(windowX, windowY + HEADER, windowX + windowW, windowY + windowH, 0xFF10131A);
+        graphics.fill(windowX, windowY, windowX + windowW, windowY + 1, 0x668FAFD8);
+        graphics.fill(windowX, windowY + windowH - 2, windowX + windowW, windowY + windowH, 0x668FAFD8);
+        graphics.text(font, "VISION BROWSER", windowX + 12, windowY + 11, 0xFFEAF1FF, false);
         if (browser != null) {
             try {
                 RinkuRenderCoordinator.pumpOnRenderThread();
                 if (browser.isTextureReady()) {
                     Identifier texture = (Identifier) (Object) browser.getTextureIdentifier();
                     if (texture != null) {
-                        graphics.blit(RenderPipelines.GUI_TEXTURED, texture, 0, 58, 0.0F, 0.0F,
-                                width, height - 58, width, height - 58);
+                        graphics.blit(RenderPipelines.GUI_TEXTURED, texture,
+                                windowX, windowY + HEADER, 0.0F, 0.0F,
+                                windowW, windowH - HEADER, windowW, windowH - HEADER);
                     }
                 }
             } catch (Throwable ignored) { }
         }
+        // Small resize grip in the bottom-right corner.
+        graphics.fill(windowX + windowW - 12, windowY + windowH - 3,
+                windowX + windowW - 3, windowY + windowH - 2, 0xFF9BAFC8);
+        graphics.fill(windowX + windowW - 8, windowY + windowH - 7,
+                windowX + windowW - 3, windowY + windowH - 6, 0xFF9BAFC8);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 
+    private boolean insidePage(double x, double y) {
+        return x >= windowX && x < windowX + windowW && y >= windowY + HEADER && y < windowY + windowH;
+    }
+
     private int browserMouseX(double x) {
-        return (int) (x * minecraft.getWindow().getGuiScale());
+        return (int) ((x - windowX) * minecraft.getWindow().getGuiScale());
     }
 
     private int browserMouseY(double y) {
-        return (int) ((y - 58) * minecraft.getWindow().getGuiScale());
+        return (int) ((y - windowY - HEADER) * minecraft.getWindow().getGuiScale());
     }
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (super.mouseClicked(event, doubleClick)) return true;
-        if (browser != null && event.y() >= 58) {
+        double x = event.x(), y = event.y();
+        if (event.button() == 0 && x >= windowX + windowW - 18 && y >= windowY + windowH - 18) {
+            resizingWindow = true;
+            return true;
+        }
+        if (event.button() == 0 && x >= windowX && x <= windowX + windowW && y >= windowY && y < windowY + HEADER) {
+            draggingWindow = true;
+            dragOffsetX = x - windowX;
+            dragOffsetY = y - windowY;
+            return true;
+        }
+        if (browser != null && insidePage(x, y)) {
             pressedButton = event.button();
-            browser.sendMousePress(browserMouseX(event.x()), browserMouseY(event.y()), event.button());
+            browser.sendMousePress(browserMouseX(x), browserMouseY(y), event.button());
             browser.setFocus(true);
             return true;
         }
@@ -152,6 +219,11 @@ public final class VisionBrowserScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        if (draggingWindow || resizingWindow) {
+            draggingWindow = false;
+            resizingWindow = false;
+            return true;
+        }
         if (browser != null && pressedButton != -1) {
             browser.sendMouseRelease(browserMouseX(event.x()), browserMouseY(event.y()), event.button());
             pressedButton = -1;
@@ -163,12 +235,25 @@ public final class VisionBrowserScreen extends Screen {
 
     @Override
     public void mouseMoved(double x, double y) {
-        if (browser != null && y >= 58) browser.sendMouseMove(browserMouseX(x), browserMouseY(y));
+        if (browser != null && insidePage(x, y)) browser.sendMouseMove(browserMouseX(x), browserMouseY(y));
         super.mouseMoved(x, y);
     }
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+        if (draggingWindow) {
+            windowX = (int) (event.x() - dragOffsetX);
+            windowY = (int) (event.y() - dragOffsetY);
+            clampWindow();
+            return true;
+        }
+        if (resizingWindow) {
+            windowW = (int) event.x() - windowX;
+            windowH = (int) event.y() - windowY;
+            clampWindow();
+            resizeBrowser();
+            return true;
+        }
         if (browser != null && pressedButton != -1) {
             browser.sendMouseMove(browserMouseX(event.x()), browserMouseY(event.y()));
             return true;
@@ -179,7 +264,7 @@ public final class VisionBrowserScreen extends Screen {
     @Override
     public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
         if (super.mouseScrolled(x, y, horizontal, vertical)) return true;
-        if (browser != null && y >= 58) {
+        if (browser != null && insidePage(x, y)) {
             browser.sendMouseWheel(browserMouseX(x), browserMouseY(y), vertical, 0);
             return true;
         }

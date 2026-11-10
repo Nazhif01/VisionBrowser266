@@ -41,11 +41,11 @@ public final class VisionMusicHud {
         if (mouseY < y || mouseY >= y + ISLAND_HEIGHT || mouseX < x || mouseX >= x + ISLAND_WIDTH) return false;
 
         if (mouseX >= x + 118 && mouseX < x + 143) {
-            sendMediaKey(KeyEvent.VK_MEDIA_PREVIOUS_TRACK);
+            sendMediaKey(0xB1);
         } else if (mouseX >= x + 145 && mouseX < x + 169) {
-            sendMediaKey(KeyEvent.VK_MEDIA_PLAY_PAUSE);
+            sendMediaKey(0xB3);
         } else if (mouseX >= x + 171 && mouseX < x + 194) {
-            sendMediaKey(KeyEvent.VK_MEDIA_NEXT_TRACK);
+            sendMediaKey(0xB0);
         }
         return true;
     }

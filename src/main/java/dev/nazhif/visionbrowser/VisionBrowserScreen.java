@@ -12,7 +12,7 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 public final class VisionBrowserScreen extends Screen {
     private static final String HOME_URL = "https://www.google.com";
@@ -79,7 +79,7 @@ public final class VisionBrowserScreen extends Screen {
             focused = true;
             pressedButton = event.button();
             browser.setFocus(true);
-            browser.sendMousePress(event.x(), event.y() - 32, event.button());
+            browser.sendMousePress((int) event.x(), (int) event.y() - 32, event.button());
             return true;
         }
         focused = false;
@@ -90,7 +90,7 @@ public final class VisionBrowserScreen extends Screen {
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
         if (browser != null && pressedButton != -1) {
-            browser.sendMouseRelease(event.x(), event.y() - 32, event.button());
+            browser.sendMouseRelease((int) event.x(), (int) event.y() - 32, event.button());
             pressedButton = -1;
             return true;
         }
@@ -106,7 +106,7 @@ public final class VisionBrowserScreen extends Screen {
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
         if (browser != null && pressedButton != -1) {
-            browser.sendMouseMove(event.x(), event.y() - 32);
+            browser.sendMouseMove((int) event.x(), (int) event.y() - 32);
             return true;
         }
         return super.mouseDragged(event, dx, dy);
@@ -123,12 +123,12 @@ public final class VisionBrowserScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (event.key() == GLFW.GLFW_KEY_ESCAPE) {
+        if (event.key() == InputConstants.KEY_ESCAPE) {
             onClose();
             return true;
         }
         if (focused && browser != null) {
-            browser.sendKeyPress(event.key(), event.scancode(), event.modifiers());
+            browser.sendKeyPress(event.key(), 0L, event.modifiers());
             return true;
         }
         return super.keyPressed(event);
@@ -137,7 +137,7 @@ public final class VisionBrowserScreen extends Screen {
     @Override
     public boolean keyReleased(KeyEvent event) {
         if (focused && browser != null) {
-            browser.sendKeyRelease(event.key(), event.scancode(), event.modifiers());
+            browser.sendKeyRelease(event.key(), 0L, event.modifiers());
             return true;
         }
         return super.keyReleased(event);
@@ -146,7 +146,7 @@ public final class VisionBrowserScreen extends Screen {
     @Override
     public boolean charTyped(CharacterEvent event) {
         if (focused && browser != null) {
-            Character.toChars(event.codepoint()).forEach(character -> browser.sendKeyTyped(character, 0));
+            for (char character : Character.toChars(event.codepoint())) { browser.sendKeyTyped(character, 0); }
             return true;
         }
         return super.charTyped(event);

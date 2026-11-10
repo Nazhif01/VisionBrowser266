@@ -33,7 +33,7 @@ public final class VisionBrowserClient implements ClientModInitializer {
                 "key.visionbrowser.toggle_music_island",
                 InputConstants.Type.KEYBOARD,
                 InputConstants.KEY_O,
-                KeyMapping.Category.register(Identifier.fromNamespaceAndPath("visionbrowser", "main"))
+                CATEGORY
         ));
         VisionMusicHud.register();
 

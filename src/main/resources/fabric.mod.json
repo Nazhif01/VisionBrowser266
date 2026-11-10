@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "visionbrowser",
-  "version": "\${version}",
+  "version": "${version}",
   "name": "Vision Browser",
   "description": "Spatial glass browser windows inspired by visionOS.",
   "authors": ["Nazhif01"],

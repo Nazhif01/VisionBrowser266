@@ -35,17 +35,13 @@ public final class VisionBrowserScreen extends Screen {
         super.init();
         minecraft.mouseHandler.releaseMouse();
         try {
-            if (!VisionBrowserClient.ensureBrowserRuntime()) {
+            browser = VisionBrowserClient.getOrCreateBrowser(HOME_URL);
+            if (browser != null) {
+                int scale = Math.max(1, (int) minecraft.getWindow().getGuiScale());
+                browser.resize(Math.max(1, width * scale), Math.max(1, (height - 32) * scale));
+                status = "Browser ready";
+            } else {
                 status = "Rinku could not be initialized. Check that Rinku is installed.";
-            } else if (browser == null) {
-                browser = Rinku.createBrowser(HOME_URL, true);
-                if (browser != null) {
-                    int scale = Math.max(1, (int) minecraft.getWindow().getGuiScale());
-                    browser.resize(Math.max(1, width * scale), Math.max(1, (height - 32) * scale));
-                    status = "Loading " + HOME_URL;
-                } else {
-                    status = "Could not create browser.";
-                }
             }
         } catch (Throwable error) {
             status = "Browser startup failed: " + error.getClass().getSimpleName();
@@ -159,8 +155,9 @@ public final class VisionBrowserScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (addressBar != null && addressBar.isFocused()
-                && (event.key() == InputConstants.KEY_RETURN || event.key() == InputConstants.KEY_NUMPADENTER)) {
+        if (addressBar != null
+                && (event.key() == InputConstants.KEY_RETURN || event.key() == InputConstants.KEY_NUMPADENTER)
+                && !addressBar.getValue().trim().isEmpty()) {
             navigateFromAddressBar();
             return true;
         }
@@ -201,10 +198,7 @@ public final class VisionBrowserScreen extends Screen {
 
     @Override
     public void onClose() {
-        if (browser != null) {
-            try { browser.close(); } catch (Throwable ignored) { }
-            browser = null;
-        }
+        // Keep the shared browser alive so tabs and audio continue in the background.
         minecraft.gui.setScreen(parentScreen);
     }
 
@@ -215,10 +209,7 @@ public final class VisionBrowserScreen extends Screen {
 
     @Override
     public void removed() {
-        if (browser != null) {
-            try { browser.close(); } catch (Throwable ignored) { }
-            browser = null;
-        }
+        // The browser is owned by VisionBrowserClient, not by this temporary screen.
         super.removed();
     }
 }

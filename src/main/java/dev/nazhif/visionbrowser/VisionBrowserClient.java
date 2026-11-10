@@ -18,6 +18,9 @@ import java.util.List;
 public final class VisionBrowserClient implements ClientModInitializer {
     private static KeyMapping openBrowser;
     private static KeyMapping toggleMusicIsland;
+    private static KeyMapping mediaPrevious;
+    private static KeyMapping mediaToggle;
+    private static KeyMapping mediaNext;
     private static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("visionbrowser", "main"));
     private static final List<RinkuBrowser> tabs = new ArrayList<>();
     private static int activeTab = 0;
@@ -37,6 +40,12 @@ public final class VisionBrowserClient implements ClientModInitializer {
                 InputConstants.KEY_O,
                 CATEGORY
         ));
+        mediaPrevious = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.visionbrowser.media_previous", InputConstants.Type.KEYBOARD, InputConstants.KEY_LEFT_BRACKET, CATEGORY));
+        mediaToggle = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.visionbrowser.media_toggle", InputConstants.Type.KEYBOARD, InputConstants.KEY_P, CATEGORY));
+        mediaNext = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.visionbrowser.media_next", InputConstants.Type.KEYBOARD, InputConstants.KEY_RIGHT_BRACKET, CATEGORY));
         VisionMusicHud.register();
         VisionMediaService.start();
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
@@ -49,6 +58,9 @@ public final class VisionBrowserClient implements ClientModInitializer {
             while (toggleMusicIsland.consumeClick()) {
                 VisionMusicHud.toggle();
             }
+            while (mediaPrevious.consumeClick()) VisionMediaService.previous();
+            while (mediaToggle.consumeClick()) VisionMediaService.togglePlayback();
+            while (mediaNext.consumeClick()) VisionMediaService.next();
             while (openBrowser.consumeClick()) {
                 if (client.gui.screen() instanceof VisionBrowserScreen visionScreen) {
                     visionScreen.onClose();

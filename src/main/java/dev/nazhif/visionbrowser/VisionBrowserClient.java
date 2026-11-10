@@ -63,7 +63,7 @@ public final class VisionBrowserClient implements ClientModInitializer {
         return Rinku.isInitialized() || (Rinku.isInitializationAllowed() && Rinku.initialize());
     }
 
-    static synchronized RinkuBrowser getOrCreateBrowser(String startUrl) {
+    static synchronized RinkuBrowser getActiveBrowser() {\n        if (tabs.isEmpty()) return null;\n        activeTab = Math.max(0, Math.min(activeTab, tabs.size() - 1));\n        return tabs.get(activeTab);\n    }\n\n    static synchronized RinkuBrowser getOrCreateBrowser(String startUrl) {
         if (!ensureBrowserRuntime()) return null;
         if (tabs.isEmpty()) {
             RinkuBrowser first = Rinku.createBrowser(startUrl, true);

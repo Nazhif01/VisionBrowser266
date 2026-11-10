@@ -126,8 +126,7 @@ public final class VisionMediaService {
             + "function scan(){try{let m=navigator.mediaSession&&navigator.mediaSession.metadata;"
             + "let t=m&&m.title||'';let a=m&&m.artist||'';"
             + "let v=document.querySelector('video');"
-            + "if(!t&&v){let el=document.querySelector('ytmusic-player-bar .title,ytmusic-player-bar .subtitle,'
-            + "'[data-testid=nowplaying-track-title]');if(el)t=el.textContent.trim();}"
+            + "if(!t&&v){let el=document.querySelector('ytmusic-player-bar .title, ytmusic-player-bar .subtitle, [data-testid=nowplaying-track-title]');if(el)t=el.textContent.trim();}"
             + "let isPlaying=!!(v&&!v.paused);"
             + "if(!t&&v&&!v.paused){let q=document.querySelector('ytmusic-player-bar');"
             + "if(q){let x=q.querySelector('.title');if(x)t=x.textContent.trim();}}"
@@ -145,8 +144,7 @@ public final class VisionMediaService {
         String js;
         if ("toggle".equals(action)) {
             js = "(()=>{let v=document.querySelector('video');if(v){if(v.paused)v.play();else v.pause();}"
-                + "else{let b=document.querySelector('ytmusic-player-bar #play-pause-button,'
-                + "'button[aria-label*=Play],button[aria-label*=Pause]');if(b)b.click();}})();";
+                + "else{let b=document.querySelector('ytmusic-player-bar #play-pause-button, button[aria-label*=Play], button[aria-label*=Pause]');if(b)b.click();}})();";
         } else {
             boolean next = "next".equals(action);
             js = "(()=>{let sels=" + (next

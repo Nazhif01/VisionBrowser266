@@ -17,7 +17,7 @@ dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-    implementation "de.keksuccino:rinku-fabric:${project.rinku_version}-${project.minecraft_version}"
+    implementation "de.keksuccino:rinku-fabric:${project.rinku_version}"
 }
 
 tasks.withType(JavaCompile).configureEach {

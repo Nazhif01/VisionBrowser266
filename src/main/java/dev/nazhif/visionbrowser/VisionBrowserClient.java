@@ -28,6 +28,8 @@ public final class VisionBrowserClient implements ClientModInitializer {
                 CATEGORY
         ));
 
+        VisionWorldPanel.register();
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (openBrowser.consumeClick()) {
                 if (client.gui.screen() instanceof VisionBrowserScreen visionScreen) {

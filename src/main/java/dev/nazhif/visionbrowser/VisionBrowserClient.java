@@ -6,6 +6,8 @@ import de.keksuccino.rinku.RinkuBrowser;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.resources.Identifier;
@@ -36,6 +38,11 @@ public final class VisionBrowserClient implements ClientModInitializer {
                 CATEGORY
         ));
         VisionMusicHud.register();
+        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+            ScreenMouseEvents.allowMouseClick(screen).register((currentScreen, event) ->
+                    !VisionMusicHud.handleClick(event.x(), event.y(), event.button())
+            );
+        });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (toggleMusicIsland.consumeClick()) {

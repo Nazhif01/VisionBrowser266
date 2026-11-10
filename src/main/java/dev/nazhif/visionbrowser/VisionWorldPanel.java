@@ -101,7 +101,7 @@ final class VisionWorldPanel {
         try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
                 () -> "Vision Browser world panel", color, Optional.empty(),
                 target.getDepthTextureView(), OptionalDouble.empty())) {
-            pass.setPipeline(PIPELINE);
+            pass.setPipeline(RenderSystem.getCompiledPipeline(PIPELINE));
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms", transforms);
             pass.setVertexBuffer(0, info.vertexBuffer().slice());

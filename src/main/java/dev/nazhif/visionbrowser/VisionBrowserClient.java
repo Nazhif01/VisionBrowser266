@@ -17,7 +17,8 @@ public final class VisionBrowserClient implements ClientModInitializer {
     private static KeyMapping openBrowser;
     private static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("visionbrowser", "main"));
     private static final List<RinkuBrowser> tabs = new ArrayList<>();
-    private static int activeTab = 0;\n    private static KeyMapping toggleLyrics;
+    private static int activeTab = 0;
+    private static KeyMapping toggleLyrics;
 
     @Override
     public void onInitializeClient() {
@@ -28,10 +29,15 @@ public final class VisionBrowserClient implements ClientModInitializer {
                 CATEGORY
         ));
 
-        VisionWorldPanel.register();\n        FloatingLyrics.register();\n        VisionMediaBridge.start();\n        toggleLyrics = KeyMappingHelper.registerKeyMapping(new KeyMapping(\n                "key.visionbrowser.toggle_lyrics", InputConstants.Type.KEYBOARD, InputConstants.KEY_J, CATEGORY));
+        VisionWorldPanel.register();
+        FloatingLyrics.register();
+        VisionMediaBridge.start();
+        toggleLyrics = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.visionbrowser.toggle_lyrics", InputConstants.Type.KEYBOARD, InputConstants.KEY_J, CATEGORY));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            while (toggleLyrics.consumeClick()) FloatingLyrics.toggle();\n            while (openBrowser.consumeClick()) {
+            while (toggleLyrics.consumeClick()) FloatingLyrics.toggle();
+            while (openBrowser.consumeClick()) {
                 if (client.gui.screen() instanceof VisionBrowserScreen visionScreen) {
                     visionScreen.onClose();
                 } else if (client.gui.screen() == null || client.gui.screen() instanceof TitleScreen) {
@@ -90,7 +96,11 @@ public final class VisionBrowserClient implements ClientModInitializer {
         return tabs.isEmpty() ? null : tabs.get(activeTab);
     }
 
-    static synchronized RinkuBrowser getActiveBrowser() {\n        return tabs.isEmpty() ? null : tabs.get(Math.max(0, Math.min(activeTab, tabs.size() - 1)));\n    }\n\n    static synchronized int getTabCount() {
+    static synchronized RinkuBrowser getActiveBrowser() {
+        return tabs.isEmpty() ? null : tabs.get(Math.max(0, Math.min(activeTab, tabs.size() - 1)));
+    }
+
+    static synchronized int getTabCount() {
         return tabs.size();
     }
 

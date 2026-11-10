@@ -139,6 +139,21 @@ public final class VisionBrowserScreen extends Screen {
         rebuild();
     }
 
+    private static void roundedRect(GuiGraphicsExtractor graphics, int x, int y, int w, int h, int radius, int color) {
+        int r = Math.max(0, Math.min(radius, Math.min(w, h) / 2));
+        for (int row = 0; row < h; row++) {
+            int inset = 0;
+            if (row < r) {
+                double dy = r - row - 0.5;
+                inset = r - (int) Math.floor(Math.sqrt(Math.max(0, r * r - dy * dy)));
+            } else if (row >= h - r) {
+                double dy = row - (h - r) + 0.5;
+                inset = r - (int) Math.floor(Math.sqrt(Math.max(0, r * r - dy * dy)));
+            }
+            graphics.fill(x + inset, y + row, x + w - inset, y + row + 1, color);
+        }
+    }
+
     private void navigateFromAddressBar() {
         if (browser == null || addressBar == null) return;
         String input = addressBar.getValue().trim();
@@ -154,14 +169,14 @@ public final class VisionBrowserScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        // Layered translucent surfaces approximate a frosted-glass panel.
-        graphics.fill(windowX - 3, windowY - 3, windowX + windowW + 3, windowY + windowH + 3, 0x303E526D);
-        graphics.fill(windowX, windowY, windowX + windowW, windowY + windowH, 0xB818202C);
-        graphics.fill(windowX, windowY, windowX + windowW, windowY + HEADER, 0xD92C394B);
-        graphics.fill(windowX + 1, windowY + 1, windowX + windowW - 1, windowY + 2, 0x70D8E8FF);
-        graphics.fill(windowX, windowY + HEADER - 1, windowX + windowW, windowY + HEADER, 0x508FAFD8);
-        graphics.fill(windowX, windowY + windowH - 2, windowX + windowW, windowY + windowH, 0x668FAFD8);
-        graphics.fill(windowX + 9, windowY + 6, windowX + windowW - 9, windowY + 28, 0x263F526A);
+        // Rounded layered glass shell with a brighter visionOS-style toolbar.
+        roundedRect(graphics, windowX - 4, windowY - 4, windowW + 8, windowH + 8, 20, 0x403B8FC4);
+        roundedRect(graphics, windowX, windowY, windowW, windowH, 18, 0xD9141D2B);
+        roundedRect(graphics, windowX + 1, windowY + 1, windowW - 2, HEADER + 3, 16, 0xE52D4661);
+        roundedRect(graphics, windowX + 9, windowY + 5, windowW - 18, 25, 12, 0x665D7898);
+        graphics.fill(windowX + 18, windowY + 2, windowX + windowW - 18, windowY + 3, 0x99E4F4FF);
+        graphics.fill(windowX + 14, windowY + HEADER - 1, windowX + windowW - 14, windowY + HEADER, 0x779BC9F0);
+        graphics.fill(windowX + 12, windowY + windowH - 2, windowX + windowW - 12, windowY + windowH - 1, 0x668FAFD8);
         graphics.text(font, "VISION BROWSER", windowX + 12, windowY + 11, 0xFFEAF1FF, false);
         if (browser != null) {
             try {
@@ -175,6 +190,17 @@ public final class VisionBrowserScreen extends Screen {
                     }
                 }
             } catch (Throwable ignored) { }
+        }
+        // Mask the browser viewport corners to match the rounded glass shell.
+        int pageY = windowY + HEADER;
+        int pageH = windowH - HEADER;
+        int radius = 13;
+        for (int row = 0; row < radius; row++) {
+            int inset = radius - (int) Math.floor(Math.sqrt(radius * radius - (radius - row - 0.5) * (radius - row - 0.5)));
+            graphics.fill(windowX, pageY + row, windowX + inset, pageY + row + 1, 0xD9141D2B);
+            graphics.fill(windowX + windowW - inset, pageY + row, windowX + windowW, pageY + row + 1, 0xD9141D2B);
+            graphics.fill(windowX, pageY + pageH - row - 1, windowX + inset, pageY + pageH - row, 0xD9141D2B);
+            graphics.fill(windowX + windowW - inset, pageY + pageH - row - 1, windowX + windowW, pageY + pageH - row, 0xD9141D2B);
         }
         // Small resize grip in the bottom-right corner.
         graphics.fill(windowX + windowW - 12, windowY + windowH - 3,

@@ -38,6 +38,7 @@ public final class VisionBrowserClient implements ClientModInitializer {
                 CATEGORY
         ));
         VisionMusicHud.register();
+        VisionMediaService.start();
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             ScreenMouseEvents.allowMouseClick(screen).register((currentScreen, event) ->
                     !VisionMusicHud.handleClick(event.x(), event.y(), event.button())

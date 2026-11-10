@@ -3,7 +3,6 @@ package dev.nazhif.visionbrowser;
 import de.keksuccino.rinku.Rinku;
 import de.keksuccino.rinku.RinkuBrowser;
 import de.keksuccino.rinku.RinkuRenderCoordinator;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
@@ -16,13 +15,15 @@ import com.mojang.blaze3d.platform.InputConstants;
 
 public final class VisionBrowserScreen extends Screen {
     private static final String HOME_URL = "https://www.google.com";
+    private final Screen parentScreen;
     private RinkuBrowser browser;
     private String status = "Starting browser...";
     private boolean focused;
     private int pressedButton = -1;
 
-    public VisionBrowserScreen() {
+    public VisionBrowserScreen(Screen parentScreen) {
         super(Component.literal("Vision Browser"));
+        this.parentScreen = parentScreen;
     }
 
     @Override
@@ -158,7 +159,7 @@ public final class VisionBrowserScreen extends Screen {
             try { browser.close(); } catch (Throwable ignored) { }
             browser = null;
         }
-        Minecraft.getInstance().gui.setScreen(null);
+        minecraft.gui.setScreen(parentScreen);
     }
 
     @Override

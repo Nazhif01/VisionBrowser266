@@ -154,12 +154,14 @@ public final class VisionBrowserScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        // Leave the Minecraft world visible behind the floating browser panel.
-        graphics.fill(windowX, windowY, windowX + windowW, windowY + windowH, 0xF0181D27);
-        graphics.fill(windowX, windowY, windowX + windowW, windowY + HEADER, 0xF02B3444);
-        graphics.fill(windowX, windowY + HEADER, windowX + windowW, windowY + windowH, 0xFF10131A);
-        graphics.fill(windowX, windowY, windowX + windowW, windowY + 1, 0x668FAFD8);
+        // Layered translucent surfaces approximate a frosted-glass panel.
+        graphics.fill(windowX - 3, windowY - 3, windowX + windowW + 3, windowY + windowH + 3, 0x303E526D);
+        graphics.fill(windowX, windowY, windowX + windowW, windowY + windowH, 0xB818202C);
+        graphics.fill(windowX, windowY, windowX + windowW, windowY + HEADER, 0xD92C394B);
+        graphics.fill(windowX + 1, windowY + 1, windowX + windowW - 1, windowY + 2, 0x70D8E8FF);
+        graphics.fill(windowX, windowY + HEADER - 1, windowX + windowW, windowY + HEADER, 0x508FAFD8);
         graphics.fill(windowX, windowY + windowH - 2, windowX + windowW, windowY + windowH, 0x668FAFD8);
+        graphics.fill(windowX + 9, windowY + 6, windowX + windowW - 9, windowY + 28, 0x263F526A);
         graphics.text(font, "VISION BROWSER", windowX + 12, windowY + 11, 0xFFEAF1FF, false);
         if (browser != null) {
             try {

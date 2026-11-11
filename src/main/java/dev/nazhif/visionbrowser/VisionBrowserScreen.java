@@ -171,8 +171,8 @@ public final class VisionBrowserScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         // Rounded layered glass shell with a brighter visionOS-style toolbar.
         roundedRect(graphics, windowX - 4, windowY - 4, windowW + 8, windowH + 8, 20, 0x403B8FC4);
-        roundedRect(graphics, windowX, windowY, windowW, windowH, 18, 0xFF141D2B);
-        roundedRect(graphics, windowX + 1, windowY + 1, windowW - 2, HEADER + 3, 16, 0xE52D4661);
+        roundedRect(graphics, windowX, windowY, windowW, windowH, 18, 0xC8141D2B);
+        roundedRect(graphics, windowX + 1, windowY + 1, windowW - 2, HEADER + 3, 16, 0xB52D4661);
         roundedRect(graphics, windowX + 9, windowY + 5, windowW - 18, 25, 12, 0x665D7898);
         graphics.fill(windowX + 18, windowY + 2, windowX + windowW - 18, windowY + 3, 0x99E4F4FF);
         graphics.fill(windowX + 14, windowY + HEADER - 1, windowX + windowW - 14, windowY + HEADER, 0x779BC9F0);
@@ -187,6 +187,11 @@ public final class VisionBrowserScreen extends Screen {
                         graphics.blit(RenderPipelines.GUI_TEXTURED, texture,
                                 windowX, windowY + HEADER, 0.0F, 0.0F,
                                 windowW, windowH - HEADER, windowW, windowH - HEADER);
+                        // Cool translucent glass tint and a subtle inner reflection over the page.
+                        graphics.fill(windowX, windowY + HEADER, windowX + windowW, windowY + windowH,
+                                0x123D78B8);
+                        graphics.fill(windowX + 12, windowY + HEADER + 1,
+                                windowX + windowW - 12, windowY + HEADER + 2, 0x228FD8FF);
                     }
                 }
             } catch (Throwable ignored) { }

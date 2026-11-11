@@ -62,7 +62,7 @@ final class DynamicIsland {
     private static int islandX(int sw, int w) { return (sw - w) / 2; }
 
     static Hit hitTest(int sw, double mx, double my) {
-        if (!VisionMediaBridge.hasMedia() || !(target > 0.5f || expand > 0.5f)) {
+        if (!VisionMediaBridge.hasMedia() || !isExpanded()) {
             int w = VisionMediaBridge.hasMedia() ? COMPACT_W : 200;
             int x = islandX(sw, w);
             return inside(mx, my, x, TOP, w, COMPACT_H) ? Hit.ISLAND : Hit.NONE;
@@ -107,11 +107,14 @@ final class DynamicIsland {
         int r = Math.max(6, Math.min(h / 2, Math.round(lerp(COMPACT_H / 2f, 28f, e))));
         int x = islandX(sw, w), y = TOP;
 
-        roundedRect(g, x - 2, y - 1, w + 4, h + 6, r + 2, 0x1E000000); // soft shadow
-        roundedRect(g, x - 1, y, w + 2, h + 3, r + 1, 0x2A000000);
-        roundedRect(g, x, y, w, h, r, 0x3AFFFFFF);                      // hairline border
-        roundedRect(g, x + 1, y + 1, w - 2, h - 2, Math.max(2, r - 1), 0xF4060608); // body
-        g.fill(x + r, y + 1, x + w - r, y + 2, 0x30FFFFFF);             // top gloss
+        int accent = media ? IslandArt.accent() : 0xFF7C8CFF;
+        roundedRect(g, x - 5, y - 3, w + 10, h + 11, r + 5, withAlpha(accent, 0x0E));
+        roundedRect(g, x - 3, y - 2, w + 6, h + 7, r + 3, withAlpha(accent, 0x18));
+        roundedRect(g, x - 2, y - 1, w + 4, h + 5, r + 2, withAlpha(accent, 0x26));
+        roundedRect(g, x, y, w, h, r, 0x70FFFFFF);
+        roundedRect(g, x + 1, y + 1, w - 2, h - 2, Math.max(2, r - 1), 0xAA0C0C14);
+        roundedRect(g, x + 2, y + 2, w - 4, Math.max(4, (h - 4) / 2), Math.max(2, r - 2), 0x16FFFFFF);
+        roundedRect(g, x + Math.max(6, r / 2), y + 3, Math.max(8, r), 2, 1, 0x66FFFFFF);
 
         float compactAlpha = clamp01(1f - e * 2.2f);
         float expandedAlpha = clamp01((e - 0.55f) / 0.45f);
@@ -276,6 +279,10 @@ final class DynamicIsland {
     static String fmt(double seconds) {
         int t = (int) Math.max(0, seconds);
         return (t / 60) + ":" + String.format(Locale.ROOT, "%02d", t % 60);
+    }
+
+    private static int withAlpha(int rgb, int alpha) {
+        return ((alpha & 0xFF) << 24) | (rgb & 0xFFFFFF);
     }
 
     private static int argb(float alpha, int rgb) {

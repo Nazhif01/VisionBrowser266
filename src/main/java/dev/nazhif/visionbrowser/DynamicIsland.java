@@ -62,7 +62,7 @@ final class DynamicIsland {
     private static int islandX(int sw, int w) { return (sw - w) / 2; }
 
     static Hit hitTest(int sw, double mx, double my) {
-        if (!VisionMediaBridge.hasMedia() || !isExpanded()) {
+        if (!VisionMediaBridge.hasMedia() || !(target > 0.5f || expand > 0.5f)) {
             int w = VisionMediaBridge.hasMedia() ? COMPACT_W : 200;
             int x = islandX(sw, w);
             return inside(mx, my, x, TOP, w, COMPACT_H) ? Hit.ISLAND : Hit.NONE;

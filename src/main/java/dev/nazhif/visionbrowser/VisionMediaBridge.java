@@ -83,13 +83,13 @@ final class VisionMediaBridge {
             + "function clickAny(ids){for(var i=0;i<ids.length;i++){var b=deep(ids[i]);if(b){b.click();return true;}}return false;}";
     private static final String JS_TOGGLE = "(function(){"+JS_MEDIA_HELPERS
             + "var v=media();if(v){if(v.paused){var p=v.play();if(p&&p.catch)p.catch(function(){});}else{v.pause();}return;}"
-            + "clickAny(['ytmusic-player-bar #play-pause-button','#play-pause-button','button[aria-label*=\\'Pause\\']','button[aria-label*=\\'Play\\']']);})();";
+            + "clickAny(['ytmusic-player-bar #play-pause-button','#play-pause-button','button[aria-label*=Pause]','button[aria-label*=Play]']);})();";
     private static final String JS_MUTE = "(function(){"+JS_MEDIA_HELPERS+"var v=media();if(v)v.muted=!v.muted;})();";
     private static final String JS_NEXT = "(function(){"+JS_MEDIA_HELPERS
-            + "if(clickAny(['ytmusic-player-bar #next-button','#next-button','.next-button','.ytp-next-button','button[aria-label=\\'Next\\']']))return;"
+            + "if(clickAny(['ytmusic-player-bar #next-button','#next-button','.next-button','.ytp-next-button','button[aria-label*=Next]']))return;"
             + "var v=media();if(v&&v.duration>0)v.currentTime=Math.min(v.duration,v.currentTime+10);})();";
     private static final String JS_PREV = "(function(){"+JS_MEDIA_HELPERS
-            + "if(clickAny(['ytmusic-player-bar #previous-button','#previous-button','.previous-button','.ytp-prev-button','button[aria-label=\\'Previous\\']']))return;"
+            + "if(clickAny(['ytmusic-player-bar #previous-button','#previous-button','.previous-button','.ytp-prev-button','button[aria-label*=Previous]']))return;"
             + "var v=media();if(v)v.currentTime=0;})();";
 
     private VisionMediaBridge() { }

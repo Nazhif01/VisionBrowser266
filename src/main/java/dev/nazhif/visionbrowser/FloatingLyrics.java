@@ -89,22 +89,20 @@ final class FloatingLyrics {
     private static void render(GuiGraphicsExtractor graphics, DeltaTracker tickCounter) {
         if (!enabled) return;
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null) return;
+        if (client.player == null || client.options.hideGui) return;
+
         List<Line> current = lines;
-        int screenWidth = client.getWindow().getGuiScaledWidth();
-        int screenHeight = client.getWindow().getGuiScaledHeight();
-        int centerX = screenWidth / 2;
-        int baseY = (int) (screenHeight * 0.72f);
+        int sw = client.getWindow().getGuiScaledWidth();
+        int sh = client.getWindow().getGuiScaledHeight();
+        int cx = sw / 2;
+        // Head-locked lyric placement: stays in the player's view, above the crosshair.
+        int anchorY = Math.max(42, (int) (sh * 0.30f));
 
         if (current.isEmpty()) {
             if (song.isBlank() && message.startsWith("Play music")) return;
             String label = song.isBlank() ? message : song + "  •  " + message;
-            int width = client.font.width(label) + 28;
-            int x = centerX - width / 2;
-            graphics.fill(x, baseY - 12, x + width, baseY + 16, 0xA8141D2B);
-            graphics.fill(x + 1, baseY - 11, x + width - 1, baseY - 10, 0x669BC9F0);
-            graphics.text(client.font, label, centerX - client.font.width(label) / 2,
-                    baseY - 3, 0xFFEAF1FF, false);
+            label = DynamicIsland.ellipsize(client.font, label, Math.max(80, sw - 80));
+            drawGlowText(graphics, client, label, cx, anchorY, 0xFFDDEBFF, 0x557DBBFF, false);
             return;
         }
 
@@ -115,24 +113,37 @@ final class FloatingLyrics {
             else break;
         }
         if (active < 0) active = 0;
-        int first = Math.max(0, active - 1);
-        int last = Math.min(current.size() - 1, active + 1);
-        int maxWidth = 0;
-        for (int i = first; i <= last; i++) maxWidth = Math.max(maxWidth, client.font.width(current.get(i).text()));
-        int panelWidth = Math.min(screenWidth - 32, maxWidth + 48);
-        int panelHeight = (last - first + 1) * 20 + 34;
-        int panelX = centerX - panelWidth / 2;
-        int panelY = baseY - panelHeight / 2;
-        graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xA8141D2B);
-        graphics.fill(panelX + 1, panelY + 1, panelX + panelWidth - 1, panelY + 2, 0xAA9BC9F0);
-        String label = song + "  •  " + artist;
-        graphics.text(client.font, label, centerX - client.font.width(label) / 2,
-                panelY + 7, 0xFFB7CBE2, false);
-        for (int i = first; i <= last; i++) {
-            String text = current.get(i).text();
-            int color = i == active ? 0xFFFFFFFF : 0xFF9BAFC8;
-            int x = centerX - client.font.width(text) / 2;
-            graphics.text(client.font, text, x, panelY + 22 + (i - first) * 20, color, false);
+
+        String heading = song + (artist.isBlank() ? "" : "  ·  " + artist);
+        heading = DynamicIsland.ellipsize(client.font, heading, Math.max(80, sw - 100));
+        int headingY = anchorY - 39;
+        graphics.text(client.font, heading, cx - client.font.width(heading) / 2,
+                headingY, 0x99D5E4F5, false);
+
+        if (active > 0) {
+            String previous = DynamicIsland.ellipsize(client.font, current.get(active - 1).text(), sw - 100);
+            drawGlowText(graphics, client, previous, cx, anchorY - 19, 0x99B9C9DF, 0x223D78B8, false);
         }
+        String lyric = DynamicIsland.ellipsize(client.font, current.get(active).text(), sw - 80);
+        drawGlowText(graphics, client, lyric, cx, anchorY, 0xFFFFFFFF, 0xAA8BCBFF, true);
+
+        if (active + 1 < current.size()) {
+            String next = DynamicIsland.ellipsize(client.font, current.get(active + 1).text(), sw - 100);
+            drawGlowText(graphics, client, next, cx, anchorY + 21, 0x99B9C9DF, 0x223D78B8, false);
+        }
+    }
+
+    private static void drawGlowText(GuiGraphicsExtractor graphics, Minecraft client, String text,
+                                     int centerX, int y, int color, int glow, boolean strong) {
+        int x = centerX - client.font.width(text) / 2;
+        if (strong) {
+            graphics.text(client.font, text, x - 1, y, glow, false);
+            graphics.text(client.font, text, x + 1, y, glow, false);
+            graphics.text(client.font, text, x, y - 1, glow, false);
+            graphics.text(client.font, text, x, y + 1, glow, false);
+        } else {
+            graphics.text(client.font, text, x, y + 1, glow, false);
+        }
+        graphics.text(client.font, text, x, y, color, false);
     }
 }

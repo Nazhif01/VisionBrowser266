@@ -1,13 +1,11 @@
 package dev.nazhif.visionbrowser;
 
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
-import com.mojang.blaze3d.vertex.PoseStack;
-import org.joml.Matrix4f;
-import net.minecraft.client.gui.Font;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.phys.Vec3;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,67 +21,13 @@ final class FloatingLyrics {
     private static volatile boolean enabled = true;
     private static volatile String requestedTrack = "";
     private static final AtomicLong requestId = new AtomicLong();
-    private static volatile Vec3 worldAnchor;
 
     private FloatingLyrics() { }
 
     static void register() {
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (client.player == null || client.level == null) {
-                worldAnchor = null;
-                return;
-            }
-            worldAnchor = client.player.getEyePosition()
-                    .add(client.player.getLookAngle().scale(3.0))
-                    .add(0.0, 0.16, 0.0);
-        });
-        LevelRenderEvents.COLLECT_SUBMITS.register(FloatingLyrics::renderWorld);
-    }
-
-    private static void renderWorld(net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext context) {
-        if (!enabled || lines.isEmpty()) return;
-        Vec3 anchor = worldAnchor;
-        Minecraft client = Minecraft.getInstance();
-        if (anchor == null || client.player == null) return;
-        List<Line> current = lines;
-        double position = VisionMediaBridge.positionSeconds();
-        int active = -1;
-        for (int i = 0; i < current.size(); i++) {
-            if (current.get(i).time() <= position) active = i;
-            else break;
-        }
-        if (active < 0) active = 0;
-
-        PoseStack pose = context.poseStack();
-        Vec3 camera = context.levelState().cameraRenderState.pos;
-        pose.pushPose();
-        pose.translate(-camera.x, -camera.y, -camera.z);
-        pose.translate(anchor.x, anchor.y, anchor.z);
-        pose.mulPose(new Matrix4f().rotation(client.gameRenderer.mainCamera().rotation()));
-        pose.scale(-0.025f, -0.025f, 0.025f);
-
-        var collector = context.submitNodeCollector().order(1);
-        Font font = client.font;
-        int light = 0x00F000F0;
-        String heading = song + (artist.isBlank() ? "" : "  ·  " + artist);
-        submitCentered(collector, pose, font, heading, -30f, 0xBBDDEBFF, 0x55000000, light, false);
-        if (active > 0) submitCentered(collector, pose, font, current.get(active - 1).text(),
-                -13f, 0x99C8D6E8, 0x44000000, light, false);
-        submitCentered(collector, pose, font, current.get(active).text(),
-                5f, 0xFFFFFFFF, 0x88000000, light, true);
-        if (active + 1 < current.size()) submitCentered(collector, pose, font,
-                current.get(active + 1).text(), 23f, 0x99C8D6E8, 0x44000000, light, false);
-        pose.popPose();
-    }
-
-    private static void submitCentered(net.minecraft.client.renderer.OrderedSubmitNodeCollector collector,
-                                        PoseStack pose, Font font, String text, float y,
-                                        int color, int background, int light, boolean highlighted) {
-        String safe = text == null ? "" : text;
-        float x = -font.width(safe) / 2.0f;
-        collector.submitText(pose, x, y, Component.literal(safe).getVisualOrderText(),
-                true, Font.DisplayMode.SEE_THROUGH, light, color, background,
-                highlighted ? 0xFF8BCBFF : 0);
+        HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
+                Identifier.fromNamespaceAndPath("visionbrowser", "floating_lyrics"),
+                FloatingLyrics::render);
     }
 
     static void toggle() { enabled = !enabled; }
@@ -142,5 +86,53 @@ final class FloatingLyrics {
         message = "";
     }
 
+    private static void render(GuiGraphicsExtractor graphics, DeltaTracker tickCounter) {
+        if (!enabled) return;
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null) return;
+        List<Line> current = lines;
+        int screenWidth = client.getWindow().getGuiScaledWidth();
+        int screenHeight = client.getWindow().getGuiScaledHeight();
+        int centerX = screenWidth / 2;
+        int baseY = (int) (screenHeight * 0.72f);
 
+        if (current.isEmpty()) {
+            if (song.isBlank() && message.startsWith("Play music")) return;
+            String label = song.isBlank() ? message : song + "  •  " + message;
+            int width = client.font.width(label) + 28;
+            int x = centerX - width / 2;
+            graphics.fill(x, baseY - 12, x + width, baseY + 16, 0xA8141D2B);
+            graphics.fill(x + 1, baseY - 11, x + width - 1, baseY - 10, 0x669BC9F0);
+            graphics.text(client.font, label, centerX - client.font.width(label) / 2,
+                    baseY - 3, 0xFFEAF1FF, false);
+            return;
+        }
+
+        double position = VisionMediaBridge.positionSeconds();
+        int active = -1;
+        for (int i = 0; i < current.size(); i++) {
+            if (current.get(i).time() <= position) active = i;
+            else break;
+        }
+        if (active < 0) active = 0;
+        int first = Math.max(0, active - 1);
+        int last = Math.min(current.size() - 1, active + 1);
+        int maxWidth = 0;
+        for (int i = first; i <= last; i++) maxWidth = Math.max(maxWidth, client.font.width(current.get(i).text()));
+        int panelWidth = Math.min(screenWidth - 32, maxWidth + 48);
+        int panelHeight = (last - first + 1) * 20 + 34;
+        int panelX = centerX - panelWidth / 2;
+        int panelY = baseY - panelHeight / 2;
+        graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xA8141D2B);
+        graphics.fill(panelX + 1, panelY + 1, panelX + panelWidth - 1, panelY + 2, 0xAA9BC9F0);
+        String label = song + "  •  " + artist;
+        graphics.text(client.font, label, centerX - client.font.width(label) / 2,
+                panelY + 7, 0xFFB7CBE2, false);
+        for (int i = first; i <= last; i++) {
+            String text = current.get(i).text();
+            int color = i == active ? 0xFFFFFFFF : 0xFF9BAFC8;
+            int x = centerX - client.font.width(text) / 2;
+            graphics.text(client.font, text, x, panelY + 22 + (i - first) * 20, color, false);
+        }
+    }
 }

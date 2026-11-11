@@ -1,11 +1,12 @@
 package dev.nazhif.visionbrowser;
 
-import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
-import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
-import net.minecraft.client.DeltaTracker;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.gui.Font;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,13 +22,67 @@ final class FloatingLyrics {
     private static volatile boolean enabled = true;
     private static volatile String requestedTrack = "";
     private static final AtomicLong requestId = new AtomicLong();
+    private static volatile Vec3 worldAnchor;
 
     private FloatingLyrics() { }
 
     static void register() {
-        HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
-                Identifier.fromNamespaceAndPath("visionbrowser", "floating_lyrics"),
-                FloatingLyrics::render);
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (client.player == null || client.level == null) {
+                worldAnchor = null;
+                return;
+            }
+            worldAnchor = client.player.getEyePosition()
+                    .add(client.player.getLookAngle().scale(3.0))
+                    .add(0.0, 0.16, 0.0);
+        });
+        LevelRenderEvents.COLLECT_SUBMITS.register(FloatingLyrics::renderWorld);
+    }
+
+    private static void renderWorld(net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext context) {
+        if (!enabled || lines.isEmpty()) return;
+        Vec3 anchor = worldAnchor;
+        Minecraft client = Minecraft.getInstance();
+        if (anchor == null || client.player == null) return;
+        List<Line> current = lines;
+        double position = VisionMediaBridge.positionSeconds();
+        int active = -1;
+        for (int i = 0; i < current.size(); i++) {
+            if (current.get(i).time() <= position) active = i;
+            else break;
+        }
+        if (active < 0) active = 0;
+
+        PoseStack pose = context.poseStack();
+        Vec3 camera = context.levelState().cameraRenderState.pos;
+        pose.pushPose();
+        pose.translate(-camera.x, -camera.y, -camera.z);
+        pose.translate(anchor.x, anchor.y, anchor.z);
+        pose.mulPose(client.gameRenderer.mainCamera().rotation());
+        pose.scale(-0.025f, -0.025f, 0.025f);
+
+        var collector = context.submitNodeCollector().order(1);
+        Font font = client.font;
+        int light = 0x00F000F0;
+        String heading = song + (artist.isBlank() ? "" : "  ·  " + artist);
+        submitCentered(collector, pose, font, heading, -30f, 0xBBDDEBFF, 0x55000000, light, false);
+        if (active > 0) submitCentered(collector, pose, font, current.get(active - 1).text(),
+                -13f, 0x99C8D6E8, 0x44000000, light, false);
+        submitCentered(collector, pose, font, current.get(active).text(),
+                5f, 0xFFFFFFFF, 0x88000000, light, true);
+        if (active + 1 < current.size()) submitCentered(collector, pose, font,
+                current.get(active + 1).text(), 23f, 0x99C8D6E8, 0x44000000, light, false);
+        pose.popPose();
+    }
+
+    private static void submitCentered(net.minecraft.client.renderer.OrderedSubmitNodeCollector collector,
+                                        PoseStack pose, Font font, String text, float y,
+                                        int color, int background, int light, boolean highlighted) {
+        String safe = text == null ? "" : text;
+        float x = -font.width(safe) / 2.0f;
+        collector.submitText(pose, x, y, Component.literal(safe).getVisualOrderText(),
+                true, Font.DisplayMode.SEE_THROUGH, light, color, background,
+                highlighted ? 0xFF8BCBFF : 0);
     }
 
     static void toggle() { enabled = !enabled; }
@@ -86,64 +141,5 @@ final class FloatingLyrics {
         message = "";
     }
 
-    private static void render(GuiGraphicsExtractor graphics, DeltaTracker tickCounter) {
-        if (!enabled) return;
-        Minecraft client = Minecraft.getInstance();
-        if (client.player == null) return;
 
-        List<Line> current = lines;
-        int sw = client.getWindow().getGuiScaledWidth();
-        int sh = client.getWindow().getGuiScaledHeight();
-        int cx = sw / 2;
-        // Head-locked lyric placement: stays in the player's view, above the crosshair.
-        int anchorY = Math.max(42, (int) (sh * 0.30f));
-
-        if (current.isEmpty()) {
-            if (song.isBlank() && message.startsWith("Play music")) return;
-            String label = song.isBlank() ? message : song + "  •  " + message;
-            label = DynamicIsland.ellipsize(client.font, label, Math.max(80, sw - 80));
-            drawGlowText(graphics, client, label, cx, anchorY, 0xFFDDEBFF, 0x557DBBFF, false);
-            return;
-        }
-
-        double position = VisionMediaBridge.positionSeconds();
-        int active = -1;
-        for (int i = 0; i < current.size(); i++) {
-            if (current.get(i).time() <= position) active = i;
-            else break;
-        }
-        if (active < 0) active = 0;
-
-        String heading = song + (artist.isBlank() ? "" : "  ·  " + artist);
-        heading = DynamicIsland.ellipsize(client.font, heading, Math.max(80, sw - 100));
-        int headingY = anchorY - 39;
-        graphics.text(client.font, heading, cx - client.font.width(heading) / 2,
-                headingY, 0x99D5E4F5, false);
-
-        if (active > 0) {
-            String previous = DynamicIsland.ellipsize(client.font, current.get(active - 1).text(), sw - 100);
-            drawGlowText(graphics, client, previous, cx, anchorY - 19, 0x99B9C9DF, 0x223D78B8, false);
-        }
-        String lyric = DynamicIsland.ellipsize(client.font, current.get(active).text(), sw - 80);
-        drawGlowText(graphics, client, lyric, cx, anchorY, 0xFFFFFFFF, 0xAA8BCBFF, true);
-
-        if (active + 1 < current.size()) {
-            String next = DynamicIsland.ellipsize(client.font, current.get(active + 1).text(), sw - 100);
-            drawGlowText(graphics, client, next, cx, anchorY + 21, 0x99B9C9DF, 0x223D78B8, false);
-        }
-    }
-
-    private static void drawGlowText(GuiGraphicsExtractor graphics, Minecraft client, String text,
-                                     int centerX, int y, int color, int glow, boolean strong) {
-        int x = centerX - client.font.width(text) / 2;
-        if (strong) {
-            graphics.text(client.font, text, x - 1, y, glow, false);
-            graphics.text(client.font, text, x + 1, y, glow, false);
-            graphics.text(client.font, text, x, y - 1, glow, false);
-            graphics.text(client.font, text, x, y + 1, glow, false);
-        } else {
-            graphics.text(client.font, text, x, y + 1, glow, false);
-        }
-        graphics.text(client.font, text, x, y, color, false);
-    }
 }

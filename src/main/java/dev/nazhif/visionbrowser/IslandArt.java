@@ -39,7 +39,7 @@ final class IslandArt {
         if (wanted.equals(requestedUrl)) return;
         requestedUrl = wanted;
         if (wanted.isEmpty()) {
-            Minecraft.getInstance().execute(() -> install(null, ""));
+            Minecraft.getInstance().execute(() -> install(null, "", 0xFF7C8CFF));
             return;
         }
         Thread worker = new Thread(() -> {

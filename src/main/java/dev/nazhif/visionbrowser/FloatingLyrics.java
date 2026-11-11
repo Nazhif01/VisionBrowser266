@@ -3,6 +3,7 @@ package dev.nazhif.visionbrowser;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import com.mojang.blaze3d.vertex.PoseStack;
+import org.joml.Matrix4f;
 import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
@@ -58,7 +59,7 @@ final class FloatingLyrics {
         pose.pushPose();
         pose.translate(-camera.x, -camera.y, -camera.z);
         pose.translate(anchor.x, anchor.y, anchor.z);
-        pose.mulPose(client.gameRenderer.mainCamera().rotation());
+        pose.mulPose(new Matrix4f().rotation(client.gameRenderer.mainCamera().rotation()));
         pose.scale(-0.025f, -0.025f, 0.025f);
 
         var collector = context.submitNodeCollector().order(1);

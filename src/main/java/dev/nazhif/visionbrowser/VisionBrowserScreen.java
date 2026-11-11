@@ -18,6 +18,8 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 public final class VisionBrowserScreen extends Screen {
+    /** Minecraft 26.3 uses SDL button numbering: left = 1. */
+    private static final int MOUSE_LEFT = 1;
     private static final String HOME_URL = "https://www.google.com";
     private static final int HEADER = 58;
     private final Screen parentScreen;
@@ -187,6 +189,10 @@ public final class VisionBrowserScreen extends Screen {
                         graphics.blit(RenderPipelines.GUI_TEXTURED, texture,
                                 windowX, windowY + HEADER, 0.0F, 0.0F,
                                 windowW, windowH - HEADER, windowW, windowH - HEADER);
+                        graphics.fill(windowX, windowY + HEADER, windowX + windowW, windowY + windowH,
+                                0x123D78B8);
+                        graphics.fill(windowX + 12, windowY + HEADER + 1,
+                                windowX + windowW - 12, windowY + HEADER + 2, 0x228FD8FF);
                         // Cool translucent glass tint and a subtle inner reflection over the page.
                         graphics.fill(windowX, windowY + HEADER, windowX + windowW, windowY + windowH,
                                 0x123D78B8);
@@ -231,7 +237,7 @@ public final class VisionBrowserScreen extends Screen {
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (super.mouseClicked(event, doubleClick)) return true;
         double x = event.x(), y = event.y();
-        if (event.button() == 0 && x >= windowX + windowW - 18 && y >= windowY + windowH - 18) {
+        if (event.button() == MOUSE_LEFT && x >= windowX + windowW - 18 && y >= windowY + windowH - 18) {
             resizingWindow = true;
             return true;
         }

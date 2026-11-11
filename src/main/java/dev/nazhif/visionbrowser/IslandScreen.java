@@ -9,6 +9,8 @@ import net.minecraft.network.chat.Component;
 
 /** Transparent screen that frees the cursor so the Dynamic Island can be clicked and dragged without opening the browser. */
 public final class IslandScreen extends Screen {
+    /** Minecraft 26.3 uses SDL button numbering: left = 1. */
+    private static final int MOUSE_LEFT = 1;
     private final Screen parentScreen;
     private long lastVolumeSend;
 
@@ -32,7 +34,7 @@ public final class IslandScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (event.button() != 0) return false;
+        if (event.button() != MOUSE_LEFT) return false;
         double x = event.x(), y = event.y();
         DynamicIsland.Hit hit = DynamicIsland.hitTest(width, x, y);
         switch (hit) {

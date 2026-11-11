@@ -75,6 +75,7 @@ final class VisionMediaBridge {
             + "}catch(e){}})();")
             .replace("@V@", Integer.toString(SCRIPT_VERSION)).replace("@PREFIX@", PREFIX);
 
+    private static final String JS_PREFIX = "var v=document.querySelector('video,audio');";
     private static final String JS_MEDIA_HELPERS =
             "function deep(sel){var q=[document];while(q.length){var r=q.shift();try{var e=r.querySelector(sel);if(e)return e;"
             + "var all=r.querySelectorAll('*');for(var i=0;i<all.length;i++)if(all[i].shadowRoot)q.push(all[i].shadowRoot);}catch(e){}}return null;}"

@@ -97,6 +97,7 @@ final class FloatingLyrics {
         int baseY = (int) (screenHeight * 0.72f);
 
         if (current.isEmpty()) {
+            Lyrics3D.clear();
             if (song.isBlank() && message.startsWith("Play music")) return;
             String label = song.isBlank() ? message : song + "  •  " + message;
             int width = client.font.width(label) + 28;
@@ -115,6 +116,9 @@ final class FloatingLyrics {
             else break;
         }
         if (active < 0) active = 0;
+        Lyrics3D.show(song + "#" + active, current.get(active).text());
+        if (Lyrics3D.render(graphics, client)) return; // lyrics are drawn floating in the world
+        // 3D unavailable this frame: fall back to the 2D panel below and show why
         int first = Math.max(0, active - 1);
         int last = Math.min(current.size() - 1, active + 1);
         int maxWidth = 0;
@@ -134,5 +138,6 @@ final class FloatingLyrics {
             int x = centerX - client.font.width(text) / 2;
             graphics.text(client.font, text, x, panelY + 22 + (i - first) * 20, color, false);
         }
+        graphics.text(client.font, Lyrics3D.status(), panelX + 6, panelY + panelHeight + 4, 0xFF8899AA, false);
     }
 }

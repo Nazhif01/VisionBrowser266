@@ -1,0 +1,10 @@
+{
+  "key.category.visionbrowser.main": "Vision Browser",
+  "key.visionbrowser.open": "Open / close browser",
+  "key.visionbrowser.toggle_lyrics": "Toggle floating lyrics",
+  "key.visionbrowser.island": "Open Dynamic Island controls",
+  "key.visionbrowser.float_toggle": "Show / hide floating browser window",
+  "key.visionbrowser.float_lock": "Lock / unlock floating window (follow me / stay put)",
+  "key.visionbrowser.float_bigger": "Floating window: bigger",
+  "key.visionbrowser.float_smaller": "Floating window: smaller"
+}

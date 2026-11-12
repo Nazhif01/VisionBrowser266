@@ -30,6 +30,7 @@ public final class VisionBrowserScreen extends Screen {
     private boolean resizingWindow;
     private double dragOffsetX, dragOffsetY;
     private int pressedButton = -1;
+    private static boolean rebuilding;
 
     public VisionBrowserScreen(Screen parentScreen) {
         super(Component.literal("Vision Browser"));
@@ -39,6 +40,8 @@ public final class VisionBrowserScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        rebuilding = false;
+        FloatWindow.onScreenOpened();
         minecraft.mouseHandler.releaseMouse();
         if (windowW <= 0 || windowH <= 0) {
             windowW = Math.min(900, Math.max(520, width - 100));
@@ -73,13 +76,17 @@ public final class VisionBrowserScreen extends Screen {
                 .bounds(windowX + 12, windowY + 7, 24, 20).build());
         addRenderableWidget(Button.builder(Component.literal("›"), button -> navigateForward())
                 .bounds(windowX + 40, windowY + 7, 24, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Float"), button -> floatWindow())
+                .bounds(windowX + windowW - 188, windowY + 7, 56, 20).build());
+        addRenderableWidget(Button.builder(Component.literal(FloatWindow.isLocked() ? "Locked" : "Free"), button -> toggleFloatLock())
+                .bounds(windowX + windowW - 128, windowY + 7, 66, 20).build());
         addRenderableWidget(Button.builder(Component.literal("□"), button -> toggleSize())
                 .bounds(windowX + windowW - 58, windowY + 7, 22, 20).build());
         addRenderableWidget(Button.builder(Component.literal("×"), button -> onClose())
                 .bounds(windowX + windowW - 30, windowY + 7, 22, 20).build());
 
         addressBar = addRenderableWidget(new EditBox(font, windowX + 70, windowY + 7,
-                Math.max(100, windowW - 200), 18, Component.literal("Search or enter URL")));
+                Math.max(100, windowW - 266), 18, Component.literal("Search or enter URL")));
         addressBar.setMaxLength(2048);
         addressBar.setValue(HOME_URL);
         addressBar.setHint(Component.literal("Search Google or enter URL"));
@@ -101,6 +108,21 @@ public final class VisionBrowserScreen extends Screen {
 
     private void rebuild() {
         minecraft.gui.setScreen(new VisionBrowserScreen(parentScreen));
+    }
+
+    private void rebuild() {
+        rebuilding = true;
+        minecraft.gui.setScreen(new VisionBrowserScreen(parentScreen));
+    }
+
+    private void floatWindow() {
+        FloatWindow.setEnabled(true);
+        onClose();
+    }
+
+    private void toggleFloatLock() {
+        FloatWindow.toggleLock();
+        rebuild();
     }
 
     private void switchTab(int index) {
@@ -367,5 +389,6 @@ public final class VisionBrowserScreen extends Screen {
     @Override
     public void removed() {
         super.removed();
+        if (!rebuilding) FloatWindow.onScreenClosed();
     }
 }

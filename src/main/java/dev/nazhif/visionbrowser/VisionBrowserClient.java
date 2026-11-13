@@ -20,10 +20,6 @@ public final class VisionBrowserClient implements ClientModInitializer {
     private static int activeTab = 0;
     private static KeyMapping toggleLyrics;
     private static KeyMapping openIsland;
-    private static KeyMapping floatToggle;
-    private static KeyMapping floatLock;
-    private static KeyMapping floatBigger;
-    private static KeyMapping floatSmaller;
 
     @Override
     public void onInitializeClient() {
@@ -34,31 +30,20 @@ public final class VisionBrowserClient implements ClientModInitializer {
                 CATEGORY
         ));
 
+        VisionSettings.load();
         VisionWorldPanel.register();
         FloatingLyrics.register();
         DynamicIsland.register();
         FloatWindow.register();
+        ChatPanel.register();
         VisionMediaBridge.start();
         toggleLyrics = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.visionbrowser.toggle_lyrics", InputConstants.Type.KEYBOARD, InputConstants.KEY_J, CATEGORY));
         openIsland = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.visionbrowser.island", InputConstants.Type.KEYBOARD, InputConstants.KEY_I, CATEGORY));
-        // All of these appear under their own category in Options > Controls and can be rebound there.
-        floatToggle = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.visionbrowser.float_toggle", InputConstants.Type.KEYBOARD, InputConstants.KEY_V, CATEGORY));
-        floatLock = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.visionbrowser.float_lock", InputConstants.Type.KEYBOARD, InputConstants.KEY_K, CATEGORY));
-        floatBigger = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.visionbrowser.float_bigger", InputConstants.Type.KEYBOARD, InputConstants.KEY_U, CATEGORY));
-        floatSmaller = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                "key.visionbrowser.float_smaller", InputConstants.Type.KEYBOARD, InputConstants.KEY_Y, CATEGORY));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (toggleLyrics.consumeClick()) FloatingLyrics.toggle();
-            while (floatToggle.consumeClick()) FloatWindow.toggle();
-            while (floatLock.consumeClick()) FloatWindow.toggleLock();
-            while (floatBigger.consumeClick()) FloatWindow.bigger();
-            while (floatSmaller.consumeClick()) FloatWindow.smaller();
             while (openIsland.consumeClick()) {
                 if (client.gui.screen() instanceof IslandScreen islandScreen) {
                     islandScreen.onClose();

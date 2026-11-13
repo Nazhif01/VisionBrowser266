@@ -2,9 +2,5 @@
   "key.category.visionbrowser.main": "Vision Browser",
   "key.visionbrowser.open": "Buka / tutup browser",
   "key.visionbrowser.toggle_lyrics": "Tampilkan / sembunyikan lirik melayang",
-  "key.visionbrowser.island": "Buka kontrol Dynamic Island",
-  "key.visionbrowser.float_toggle": "Tampilkan / sembunyikan jendela browser melayang",
-  "key.visionbrowser.float_lock": "Kunci / lepas kunci jendela melayang (ikut jalan / diam di tempat)",
-  "key.visionbrowser.float_bigger": "Jendela melayang: perbesar",
-  "key.visionbrowser.float_smaller": "Jendela melayang: perkecil"
+  "key.visionbrowser.island": "Buka kontrol Dynamic Island"
 }

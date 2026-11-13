@@ -8,6 +8,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
+import org.joml.Matrix3x2fStack;
 
 import java.util.Locale;
 
@@ -61,7 +62,12 @@ final class DynamicIsland {
 
     private static int islandX(int sw, int w) { return (sw - w) / 2; }
 
-    static Hit hitTest(int sw, double mx, double my) {
+    /** mouse x/y in screen space -> island space (the island is scaled about its top-centre) */
+    private static double unscaleX(int sw, double mx) { return (mx - sw / 2.0) / VisionSettings.islandScale + sw / 2.0; }
+    private static double unscaleY(double my) { return (my - TOP) / VisionSettings.islandScale + TOP; }
+
+    static Hit hitTest(int sw, double screenX, double screenY) {
+        double mx = unscaleX(sw, screenX), my = unscaleY(screenY);
         if (!VisionMediaBridge.hasMedia() || !isExpanded()) {
             int w = VisionMediaBridge.hasMedia() ? COMPACT_W : 200;
             int x = islandX(sw, w);
@@ -79,12 +85,14 @@ final class DynamicIsland {
         return Hit.ISLAND;
     }
 
-    static float seekFracAt(int sw, double mx) {
+    static float seekFracAt(int sw, double screenX) {
+        double mx = unscaleX(sw, screenX);
         int bx = islandX(sw, EXP_W) + 16, bw = EXP_W - 32;
         return clamp01((float) ((mx - bx) / bw));
     }
 
-    static float volumeFracAt(int sw, double mx) {
+    static float volumeFracAt(int sw, double screenX) {
+        double mx = unscaleX(sw, screenX);
         int vx = islandX(sw, EXP_W) + 40, vw = EXP_W - 40 - 16;
         return clamp01((float) ((mx - vx) / vw));
     }
@@ -95,7 +103,22 @@ final class DynamicIsland {
 
     // ------------------------------------------------------------------ drawing
 
-    static void draw(GuiGraphicsExtractor g, Minecraft mc, int mouseX, int mouseY) {
+    static void draw(GuiGraphicsExtractor g, Minecraft mc, int screenMouseX, int screenMouseY) {
+        float scale = VisionSettings.islandScale;
+        int swidth = mc.getWindow().getGuiScaledWidth();
+        Matrix3x2fStack pose = g.pose();
+        pose.pushMatrix();
+        try {
+            pose.translate(swidth / 2f, (float) TOP);
+            pose.scale(scale, scale);
+            pose.translate(-swidth / 2f, (float) -TOP);
+            drawScaled(g, mc, (int) Math.round(unscaleX(swidth, screenMouseX)), (int) Math.round(unscaleY(screenMouseY)));
+        } finally {
+            pose.popMatrix();
+        }
+    }
+
+    private static void drawScaled(GuiGraphicsExtractor g, Minecraft mc, int mouseX, int mouseY) {
         step();
         boolean media = VisionMediaBridge.hasMedia();
         Font font = mc.font;
@@ -107,14 +130,10 @@ final class DynamicIsland {
         int r = Math.max(6, Math.min(h / 2, Math.round(lerp(COMPACT_H / 2f, 28f, e))));
         int x = islandX(sw, w), y = TOP;
 
-        int accent = media ? IslandArt.accent() : 0xFF7C8CFF;
-        roundedRect(g, x - 5, y - 3, w + 10, h + 11, r + 5, withAlpha(accent, 0x0E));
-        roundedRect(g, x - 3, y - 2, w + 6, h + 7, r + 3, withAlpha(accent, 0x18));
-        roundedRect(g, x - 2, y - 1, w + 4, h + 5, r + 2, withAlpha(accent, 0x26));
-        roundedRect(g, x, y, w, h, r, 0x70FFFFFF);
-        roundedRect(g, x + 1, y + 1, w - 2, h - 2, Math.max(2, r - 1), 0xAA0C0C14);
-        roundedRect(g, x + 2, y + 2, w - 4, Math.max(4, (h - 4) / 2), Math.max(2, r - 2), 0x16FFFFFF);
-        roundedRect(g, x + Math.max(6, r / 2), y + 3, Math.max(8, r), 2, 1, 0x66FFFFFF);
+        // frameless glass pill: translucent body and a soft inner sheen, with no outline or glow ring
+        roundedRect(g, x - 1, y + 1, w + 2, h + 3, r + 1, 0x24000000);
+        roundedRect(g, x, y, w, h, r, 0xB80C0C14);
+        roundedRect(g, x + 2, y + 2, w - 4, Math.max(4, (h - 4) / 2), Math.max(2, r - 2), 0x14FFFFFF);
 
         float compactAlpha = clamp01(1f - e * 2.2f);
         float expandedAlpha = clamp01((e - 0.55f) / 0.45f);

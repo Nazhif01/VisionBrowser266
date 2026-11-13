@@ -21,7 +21,8 @@ import org.joml.Vector4f;
  * FREE  : the window stays exactly where it was when the lock was released.
  * The live browser texture is projected with the game's own camera + projection matrix and drawn perspective-correct as
  * thin strips through the verified GUI blit call (see Lyrics3D). Corners are rounded in plane space, with a glass rim and glow.
- * Limitation: no occlusion by terrain; display only (control playback with the Dynamic Island or open the browser).
+ * Frameless: only the page with rounded corners (plus a small capsule under it that shows the lock state).
+ * Size comes from VisionSettings.floatWidth (slider in the chat panel). Limitation: no occlusion by terrain; display only.
  */
 final class FloatWindow {
     private static final int PX_W = 1280, PX_H = 720;          // browser resolution used while floating
@@ -29,7 +30,7 @@ final class FloatWindow {
     private static final int VIRT = 8192;                       // virtual texture size: UVs are normalised, real size is irrelevant
 
     private static boolean enabled, locked = true, screenOpen;
-    private static float widthBlocks = 1.8f, distance = 3.0f;
+    private static final float distance = 3.0f;
     private static double cx, cy, cz, rx = 1, rz = 0, nx = 0, nz = 1;
     private static boolean poseInit, faceInit;
     private static long enabledAt, lastNanos, toastUntil;
@@ -41,6 +42,7 @@ final class FloatWindow {
     private FloatWindow() { }
 
     static void register() {
+        locked = VisionSettings.floatLocked;
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
                 Identifier.fromNamespaceAndPath("visionbrowser", "floating_window"), FloatWindow::render);
     }
@@ -66,12 +68,10 @@ final class FloatWindow {
 
     static void toggleLock() {
         locked = !locked;
+        VisionSettings.floatLocked = locked;
+        VisionSettings.save();
         say(locked ? "Window LOCKED: it follows you" : "Window FREE: it stays where you left it");
     }
-
-    static void bigger() { widthBlocks = Math.min(7f, widthBlocks * 1.15f); }
-
-    static void smaller() { widthBlocks = Math.max(0.5f, widthBlocks / 1.15f); }
 
     static void onScreenOpened() { screenOpen = true; }
 
@@ -161,22 +161,19 @@ final class FloatWindow {
             if (a < 4) return;
 
             int gw = mc.getWindow().getGuiScaledWidth(), gh = mc.getWindow().getGuiScaledHeight();
-            float hw = widthBlocks / 2f, hh = hw / ASPECT;
+            float hw = VisionSettings.floatWidth / 2f, hh = hw / ASPECT;
             int accent = IslandArt.accent() & 0xFFFFFF;
             Ctx c = new Ctx(vp, cp, signX, signY, gw, gh);
 
-            // glow + glass rim (fills), then the live page (blit)
-            layer(g, c, cy, hw, hh, 0.20f, 2, fillPainter(g, (a * 0x14 / 255 << 24) | accent));
-            layer(g, c, cy, hw, hh, 0.11f, 2, fillPainter(g, (a * 0x24 / 255 << 24) | accent));
-            layer(g, c, cy, hw, hh, 0.035f, 1, fillPainter(g, (a * 0x70 / 255 << 24) | 0xFFFFFF));
+            // frameless: just the live page with rounded corners (no rim, no glow ring)
             int color = (a << 24) | 0xFFFFFF;
             layer(g, c, cy, hw, hh, 0f, 1, (x, top, height, step, t0, t1, u0, u1) ->
                     g.blit(RenderPipelines.GUI_TEXTURED, tex, x, top, u0 * VIRT, t0 * VIRT, step, height,
                             Math.max(1, Math.round((u1 - u0) * VIRT)), Math.max(1, Math.round((t1 - t0) * VIRT)), VIRT, VIRT, color));
             // lock indicator capsule under the window: bright accent = locked, white = free
             double barY = cy - (hh + 0.14);
-            int barColor = locked ? ((a * 0xE0 / 255 << 24) | accent | 0x303030) : ((a * 0x90 / 255 << 24) | 0xFFFFFF);
-            capsule(g, c, barY, 0.22f, 0.025f, barColor);
+            int barColor = locked ? ((a * 0xB0 / 255 << 24) | accent | 0x303030) : ((a * 0x60 / 255 << 24) | 0xFFFFFF);
+            capsule(g, c, barY, 0.16f, 0.018f, barColor);
         } catch (Throwable error) {
             status = "Floating window: error (" + error.getClass().getSimpleName() + ")";
         }

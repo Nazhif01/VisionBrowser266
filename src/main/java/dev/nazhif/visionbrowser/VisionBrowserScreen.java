@@ -18,7 +18,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 public final class VisionBrowserScreen extends Screen {
-    /** Minecraft 26.3 uses SDL button numbering: left = 1. */
+    /** Minecraft 26.3 uses SDL button numbering: left = 1 (Rinku's toCefMouseButton maps 1,2,3 to CEF 0,1,2). */
     private static final int MOUSE_LEFT = 1;
     private static final String HOME_URL = "https://www.google.com";
     private static final int HEADER = 58;
@@ -111,16 +111,6 @@ public final class VisionBrowserScreen extends Screen {
         minecraft.gui.setScreen(new VisionBrowserScreen(parentScreen));
     }
 
-    private void floatWindow() {
-        FloatWindow.setEnabled(true);
-        onClose();
-    }
-
-    private void toggleFloatLock() {
-        FloatWindow.toggleLock();
-        rebuild();
-    }
-
     private void switchTab(int index) {
         VisionBrowserClient.selectTab(index);
         rebuild();
@@ -133,6 +123,17 @@ public final class VisionBrowserScreen extends Screen {
 
     private void closeTab(int index) {
         VisionBrowserClient.closeTab(index, HOME_URL);
+        rebuild();
+    }
+
+    /** Turn the page into a floating 3D window and return to the game. */
+    private void floatWindow() {
+        FloatWindow.setEnabled(true);
+        onClose();
+    }
+
+    private void toggleFloatLock() {
+        FloatWindow.toggleLock();
         rebuild();
     }
 
@@ -187,47 +188,51 @@ public final class VisionBrowserScreen extends Screen {
         setFocused(null);
     }
 
+    /** Frameless look: a translucent toolbar capsule floating above a rounded page. No shell, border, glow or corner masks. */
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        // Rounded layered glass shell with a brighter visionOS-style toolbar.
-        roundedRect(graphics, windowX - 4, windowY - 4, windowW + 8, windowH + 8, 20, 0x403B8FC4);
-        roundedRect(graphics, windowX, windowY, windowW, windowH, 18, 0xFF141D2B);
-        roundedRect(graphics, windowX + 1, windowY + 1, windowW - 2, HEADER + 3, 16, 0xE52D4661);
-        roundedRect(graphics, windowX + 9, windowY + 5, windowW - 18, 25, 12, 0x665D7898);
-        graphics.fill(windowX + 18, windowY + 2, windowX + windowW - 18, windowY + 3, 0x99E4F4FF);
-        graphics.fill(windowX + 14, windowY + HEADER - 1, windowX + windowW - 14, windowY + HEADER, 0x779BC9F0);
-        graphics.fill(windowX + 12, windowY + windowH - 2, windowX + windowW - 12, windowY + windowH - 1, 0x668FAFD8);
-        graphics.text(font, "VISION BROWSER", windowX + 12, windowY + 11, 0xFFEAF1FF, false);
+        int pageY = windowY + HEADER, pageH = windowH - HEADER, radius = 16;
+        roundedRect(graphics, windowX, windowY, windowW, HEADER - 3, 14, 0xA80C0C14);          // toolbar capsule
+        roundedRect(graphics, windowX + 2, windowY + 2, windowW - 4, 22, 12, 0x12FFFFFF);        // soft sheen
         if (browser != null) {
             try {
                 RinkuRenderCoordinator.pumpOnRenderThread();
                 if (browser.isTextureReady()) {
-                    Identifier texture = (Identifier) (Object) browser.getTextureIdentifier();
-                    if (texture != null) {
-                        graphics.blit(RenderPipelines.GUI_TEXTURED, texture,
-                                windowX, windowY + HEADER, 0.0F, 0.0F,
-                                windowW, windowH - HEADER, windowW, windowH - HEADER);
-                    }
+                    Identifier texture = browser.getTextureIdentifier();
+                    if (texture != null) drawRoundedPage(graphics, texture, windowX, pageY, windowW, pageH, radius);
                 }
             } catch (Throwable ignored) { }
         }
-        // Mask the browser viewport corners to match the rounded glass shell.
-        int pageY = windowY + HEADER;
-        int pageH = windowH - HEADER;
-        int radius = 18;
-        for (int row = 0; row < radius; row++) {
-            int inset = radius - (int) Math.floor(Math.sqrt(radius * radius - (radius - row - 0.5) * (radius - row - 0.5)));
-            graphics.fill(windowX, pageY + row, windowX + inset, pageY + row + 1, 0xFF141D2B);
-            graphics.fill(windowX + windowW - inset, pageY + row, windowX + windowW, pageY + row + 1, 0xFF141D2B);
-            graphics.fill(windowX, pageY + pageH - row - 1, windowX + inset, pageY + pageH - row, 0xFF141D2B);
-            graphics.fill(windowX + windowW - inset, pageY + pageH - row - 1, windowX + windowW, pageY + pageH - row, 0xFF141D2B);
-        }
-        // Small resize grip in the bottom-right corner.
-        graphics.fill(windowX + windowW - 12, windowY + windowH - 3,
-                windowX + windowW - 3, windowY + windowH - 2, 0xFF9BAFC8);
-        graphics.fill(windowX + windowW - 8, windowY + windowH - 7,
-                windowX + windowW - 3, windowY + windowH - 6, 0xFF9BAFC8);
+        // faint resize handle in the bottom-right corner
+        graphics.fill(windowX + windowW - 14, windowY + windowH - 6, windowX + windowW - 6, windowY + windowH - 5, 0x66FFFFFF);
+        graphics.fill(windowX + windowW - 10, windowY + windowH - 10, windowX + windowW - 6, windowY + windowH - 9, 0x66FFFFFF);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+    }
+
+    private static final int VIRT = 8192; // virtual texture size: UVs are normalised, the real browser texture size does not matter
+
+    /** The page texture with rounded corners: corner rows are narrower strips, the middle is a single blit. */
+    private static void drawRoundedPage(GuiGraphicsExtractor g, Identifier tex, int x, int y, int w, int h, int r) {
+        r = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+        for (int row = 0; row < r; row++) {
+            int inset = cornerInset(r, row);
+            part(g, tex, x + inset, y + row, w - 2 * inset, 1, inset, row, w, h);
+            part(g, tex, x + inset, y + h - 1 - row, w - 2 * inset, 1, inset, h - 1 - row, w, h);
+        }
+        if (h - 2 * r > 0) part(g, tex, x, y + r, w, h - 2 * r, 0, r, w, h);
+    }
+
+    private static int cornerInset(int r, int row) {
+        double dy = r - row - 0.5;
+        return r - (int) Math.floor(Math.sqrt(Math.max(0, r * (double) r - dy * dy)));
+    }
+
+    /** draws the page-space rectangle (sx, sy, dw x dh) of a page that is totalW x totalH */
+    private static void part(GuiGraphicsExtractor g, Identifier tex, int dx, int dy, int dw, int dh, int sx, int sy, int totalW, int totalH) {
+        if (dw <= 0 || dh <= 0) return;
+        float u = sx / (float) totalW * VIRT, v = sy / (float) totalH * VIRT;
+        int uW = Math.max(1, Math.round(dw / (float) totalW * VIRT)), vH = Math.max(1, Math.round(dh / (float) totalH * VIRT));
+        g.blit(RenderPipelines.GUI_TEXTURED, tex, dx, dy, u, v, dw, dh, uW, vH, VIRT, VIRT, 0xFFFFFFFF);
     }
 
     private boolean insidePage(double x, double y) {

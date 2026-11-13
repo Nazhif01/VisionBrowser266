@@ -37,6 +37,7 @@ final class Lyrics3D {
         final double cx, cy, cz;   // world centre at spawn
         final double rx, rz;       // horizontal "right" unit vector
         final double nx, nz;       // horizontal normal pointing at the player who saw it spawn
+        final float scale = VisionSettings.lyricsScale; // size multiplier captured at spawn
         float lift, liftTarget;
         volatile Identifier texture;
         volatile int texW, texH;
@@ -72,7 +73,9 @@ final class Lyrics3D {
             double yaw = Math.toRadians(cam.yRot()), pitch = Math.toRadians(cam.xRot());
             double lx = -Math.sin(yaw) * Math.cos(pitch), ly = -Math.sin(pitch), lz = Math.cos(yaw) * Math.cos(pitch);
             for (Line old : lines) old.liftTarget += 1.0f;
-            Line line = new Line(text, cp.x + lx * DISTANCE, cp.y + ly * DISTANCE + 0.9, cp.z + lz * DISTANCE,
+            // placed to the SIDE of the view (slider: left .. right) so the lyrics never sit right in front of the player's eyes
+            double rxs = -Math.cos(yaw), rzs = -Math.sin(yaw), lat = VisionSettings.lyricsSide * 4.5;
+            Line line = new Line(text, cp.x + lx * DISTANCE + rxs * lat, cp.y + ly * DISTANCE + 0.6, cp.z + lz * DISTANCE + rzs * lat,
                     -Math.cos(yaw), -Math.sin(yaw), Math.sin(yaw), -Math.cos(yaw));
             lines.add(line);
             while (lines.size() > MAX_LINES) release(lines.remove(0));
@@ -99,9 +102,10 @@ final class Lyrics3D {
 
     private static void rasterize(Line line) {
         final int accent = IslandArt.accent();
+        final String family = VisionSettings.lyricsFont;
         Thread worker = new Thread(() -> {
             try {
-                Rendered r = renderText(line.text, accent);
+                Rendered r = renderText(line.text, accent, family);
                 Minecraft.getInstance().execute(() -> install(line, r));
             } catch (Throwable error) {
                 line.failed = true;
@@ -124,9 +128,9 @@ final class Lyrics3D {
         line.texture = id;
     }
 
-    private static Rendered renderText(String text, int accentArgb) {
+    private static Rendered renderText(String text, int accentArgb, String family) {
         int size = FONT_SIZE;
-        java.awt.Font font = new java.awt.Font("Dialog", java.awt.Font.BOLD, size);
+        java.awt.Font font = LyricFonts.make(family, size, text);
         BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D pg = probe.createGraphics();
         java.awt.FontMetrics fm = pg.getFontMetrics(font);
@@ -248,7 +252,7 @@ final class Lyrics3D {
                 int a255 = Math.round(alpha * 255f);
                 if (a255 < 4) continue;
 
-                float hw = l.texW * BLOCKS_PER_PX / 2f, hh = l.texH * BLOCKS_PER_PX / 2f;
+                float hw = l.texW * BLOCKS_PER_PX * l.scale / 2f, hh = l.texH * BLOCKS_PER_PX * l.scale / 2f;
                 float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}}; // TL, TR, BR, BL
                 float[] sx = new float[4], sy = new float[4], sw = new float[4];
                 boolean visible = true;

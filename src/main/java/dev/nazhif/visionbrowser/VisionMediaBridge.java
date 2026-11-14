@@ -380,22 +380,30 @@ final class VisionMediaBridge {
             if (words == null || words.isEmpty()) continue;
 
             lrc.append('[').append(formatLrcTime(lineStart)).append(']');
-            String previousChunk = "";
+            // Use the provider's complete line text as the authority for spaces.
+            // Word/syllable chunks can be adjacent inside a word (e.g. "won" + "dered"),
+            // so inserting a space between every timestamp corrupts the lyric.
+            String canonicalLine = str(line, "text");
+            int canonicalCursor = 0;
+            boolean hasPreviousChunk = false;
             for (com.google.gson.JsonElement wordElement : words) {
                 if (!wordElement.isJsonObject()) continue;
                 JsonObject word = wordElement.getAsJsonObject();
-                String text = str(word, "text");
-                if (text.isEmpty()) continue;
+                String rawText = str(word, "text");
+                String chunk = rawText.trim();
+                if (chunk.isEmpty()) continue;
 
-                // Word-level providers often return each token without a trailing
-                // whitespace character. Enhanced LRC preserves chunk text verbatim,
-                // so add the missing word boundary without shifting any timestamps.
-                if (syncLevel.equals("word") && needsWordSeparator(previousChunk, text)) {
-                    lrc.append(' ');
+                int match = canonicalLine.isEmpty() ? -1 : canonicalLine.indexOf(chunk, canonicalCursor);
+                if (hasPreviousChunk && match >= canonicalCursor) {
+                    // This exact substring is the real boundary from the provider's
+                    // full lyric line: empty inside a word, whitespace between words.
+                    lrc.append(canonicalLine, canonicalCursor, match);
                 }
+
                 lrc.append('<').append(formatLrcTime(num(word, "start") / 1000.0)).append('>')
-                        .append(text);
-                previousChunk = text;
+                        .append(chunk);
+                if (match >= canonicalCursor) canonicalCursor = match + chunk.length();
+                hasPreviousChunk = true;
             }
             lrc.append('\n');
         }

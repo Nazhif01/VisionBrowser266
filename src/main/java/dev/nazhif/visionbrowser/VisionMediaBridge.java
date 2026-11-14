@@ -29,7 +29,7 @@ import java.util.Locale;
  */
 final class VisionMediaBridge {
     private static final String PREFIX = "__VISION_MEDIA__";
-    private static final int SCRIPT_VERSION = 3;
+    private static final int SCRIPT_VERSION = 4;
 
     private static volatile boolean handlerRegistered;
     private static volatile CefBrowser mediaBrowser;
@@ -71,7 +71,7 @@ final class VisionMediaBridge {
             + "var n=P+encodeURIComponent(JSON.stringify(o));"
             + "if(n!==last){last=n;document.title=n;}"
             + "}catch(e){}}"
-            + "scan();setInterval(scan,500);"
+            + "scan();setInterval(scan,100);"
             + "['play','pause','loadedmetadata','seeked','volumechange'].forEach(function(ev){document.addEventListener(ev,scan,true);});"
             + "}catch(e){}})();")
             .replace("@V@", Integer.toString(SCRIPT_VERSION)).replace("@PREFIX@", PREFIX);
@@ -120,7 +120,7 @@ final class VisionMediaBridge {
 
     private static void tick() {
         ensureHandler();
-        if (++tickCounter % 20 != 0) return;
+        if (++tickCounter % 5 != 0) return;
         if (handlerRegistered) {
             for (RinkuBrowser browser : VisionBrowserClient.getTabs()) {
                 try {
@@ -321,8 +321,9 @@ final class VisionMediaBridge {
                 });
             } catch (Throwable error) {
                 if (requestKey.equals(lastTrackKey)) {
-                    Minecraft.getInstance().execute(() ->
-                            FloatingLyrics.setUnavailable("Lyrics service unavailable"));
+                    Minecraft.getInstance().execute(() -> {
+                        if (requestKey.equals(lastTrackKey)) FloatingLyrics.setUnavailable("Lyrics service unavailable");
+                    });
                 }
             }
         }, "VisionBrowser-LyricsLookup");

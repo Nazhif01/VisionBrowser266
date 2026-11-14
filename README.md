@@ -20,7 +20,7 @@ The lyrics engine and renderer are original Vision Browser code. The media bridg
 
 The parser supports standard LRC timestamps, multiple timestamps on one line, offset metadata, and enhanced LRC word timestamps. Per-word karaoke highlighting appears when the returned lyrics contain word-level timing. Standard line-timed LRC remains supported.
 
-The spatial glow renderer is the default lyrics presentation. The optional HUD mode shows the current line, upcoming lines, word-level progress when available, and an accent color sampled from the current album artwork.
+The spatial glow renderer is the default lyrics presentation. Its animation presets include Edit-style impact, pulse, fade-in, and wave motion, with Chill/Normal/Hype intensity, album-accent or white tint, optional animated rainbow tint, and chromatic split at higher intensity. The optional HUD mode shows the current line, upcoming lines, and word-level highlighting when enhanced LRC timestamps are available. Standard LRC has line-level timing only, so it cannot provide exact word-by-word synchronization.
 
 Dynamic Island and Floating Window remain Vision Browser components. No Spotify or Windows system-media source is used.
 

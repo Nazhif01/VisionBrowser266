@@ -164,7 +164,7 @@ final class FloatWindow {
                     rz = -Math.sin(yawRad);
                     ux = -Math.sin(yawRad) * Math.sin(pitchRad);
                     uy = Math.cos(pitchRad);
-                    uz = -Math.cos(yawRad) * Math.sin(pitchRad);
+                    uz = Math.cos(yawRad) * Math.sin(pitchRad);
                     faceInit = true;
                 }
             }

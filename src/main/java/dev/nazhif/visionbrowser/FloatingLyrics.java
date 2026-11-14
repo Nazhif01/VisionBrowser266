@@ -134,8 +134,7 @@ final class FloatingLyrics {
         }
         if (mode == VisionSettings.MODE_TEXT && NameTagLyrics3D.usable()) {
             Lyrics3D.clear();
-            long durationMs = Math.round(Math.max(0.12, current.get(active).end() - current.get(active).time()) * 1000);
-            NameTagLyrics3D.update(key, current.get(active).text(), durationMs);
+            NameTagLyrics3D.update(key, current.get(active), position);
             return;
         }
 

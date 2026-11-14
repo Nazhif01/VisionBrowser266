@@ -35,7 +35,7 @@ final class LyricsHud {
         float eased = 1f - (1f - transition) * (1f - transition);
         int x = (sw - PANEL_W) / 2;
         int y = Math.max(28, Math.min(sh - PANEL_H - 42, (int) (sh * 0.66f) - PANEL_H / 2));
-        int accent = IslandArt.accent() & 0xFFFFFF;
+        int accent = VisionSettings.lyricColorRgb();
 
         Matrix3x2fStack pose = g.pose();
         pose.pushMatrix();

@@ -123,6 +123,8 @@ final class ChatPanel {
                         y = cycle(r, Id.ANIM_PREV, Id.ANIM_NEXT, x, y, inner);
                         y = cycle(r, Id.POWER_PREV, Id.POWER_NEXT, x, y, inner);
                         y = cycle(r, Id.FONT_PREV, Id.FONT_NEXT, x, y, inner);
+                        y = cycle(r, Id.GLOW_FACING_PREV, Id.GLOW_FACING_NEXT, x, y, inner);
+                        y = cycle(r, Id.GLOW_PLACE_PREV, Id.GLOW_PLACE_NEXT, x, y, inner);
                         int halfGlow = (inner - 6) / 2;
                         r.add(new Item(Id.COLOR_TOGGLE, x, y, halfGlow, 18));
                         r.add(new Item(Id.RAINBOW_TOGGLE, x + halfGlow + 6, y, halfGlow, 18));
@@ -216,7 +218,11 @@ final class ChatPanel {
                 case MODE_PREV -> cycleMode(-1);
                 case MODE_NEXT -> cycleMode(1);
                 case FONT_PREV -> cycleFont(-1);
-                case FONT_NEXT -> cycleFont(1);\n                case GLOW_FACING_PREV -> setGlowFacing(-1);\n                case GLOW_FACING_NEXT -> setGlowFacing(1);\n                case GLOW_PLACE_PREV -> setGlowPlacement(-1);\n                case GLOW_PLACE_NEXT -> setGlowPlacement(1);
+                case FONT_NEXT -> cycleFont(1);
+                case GLOW_FACING_PREV -> setGlowFacing(-1);
+                case GLOW_FACING_NEXT -> setGlowFacing(1);
+                case GLOW_PLACE_PREV -> setGlowPlacement(-1);
+                case GLOW_PLACE_NEXT -> setGlowPlacement(1);
                 case ANIM_PREV -> cycleAnimation(-1);
                 case ANIM_NEXT -> cycleAnimation(1);
                 case POWER_PREV -> cycleIntensity(-1);
@@ -252,7 +258,11 @@ final class ChatPanel {
         if (was == Id.L_SIZE || was == Id.L_DIST || was == Id.L_SPREAD || was == Id.L_SIDE) FloatingLyrics.modeChanged();
     }
 
-    private static void setGlowFacing(int dir) { VisionSettings.glowFacing = Math.floorMod(VisionSettings.glowFacing + dir, 2); VisionSettings.save(); FloatingLyrics.modeChanged(); }\n\n    private static void setGlowPlacement(int dir) { VisionSettings.glowPlacement = Math.floorMod(VisionSettings.glowPlacement + dir, 2); VisionSettings.save(); FloatingLyrics.modeChanged(); }\n\n    private static void cycleMode(int dir) {
+    private static void setGlowFacing(int dir) { VisionSettings.glowFacing = Math.floorMod(VisionSettings.glowFacing + dir, 2); VisionSettings.save(); FloatingLyrics.modeChanged(); }
+
+    private static void setGlowPlacement(int dir) { VisionSettings.glowPlacement = Math.floorMod(VisionSettings.glowPlacement + dir, 2); VisionSettings.save(); FloatingLyrics.modeChanged(); }
+
+    private static void cycleMode(int dir) {
         VisionSettings.lyricsMode = Math.floorMod(VisionSettings.lyricsMode + dir, MODES.length);
         VisionSettings.save();
         FloatingLyrics.modeChanged();
@@ -302,7 +312,10 @@ final class ChatPanel {
                 case MODE_NEXT -> cycleLabel(g, font, prevItem, r, "Style", MODES[VisionSettings.lyricsMode], hot, accent);
                 case ANIM_NEXT -> cycleLabel(g, font, prevItem, r, "Animation", ANIMATIONS[VisionSettings.lyricsAnimation], hot, accent);
                 case POWER_NEXT -> cycleLabel(g, font, prevItem, r, "Intensity", INTENSITIES[VisionSettings.lyricsIntensity], hot, accent);
-                case FONT_NEXT -> cycleLabel(g, font, prevItem, r, "Font", VisionSettings.lyricsFont, hot, accent);\n                case GLOW_FACING_PREV, GLOW_PLACE_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }\n                case GLOW_FACING_NEXT -> cycleLabel(g, font, prevItem, r, "Facing", VisionSettings.glowFacing == 1 ? "Billboard" : "World", hot, accent);\n                case GLOW_PLACE_NEXT -> cycleLabel(g, font, prevItem, r, "Spawn", VisionSettings.glowPlacement == 1 ? "Random View" : "Crosshair", hot, accent);
+                case FONT_NEXT -> cycleLabel(g, font, prevItem, r, "Font", VisionSettings.lyricsFont, hot, accent);
+                case GLOW_FACING_PREV, GLOW_PLACE_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }
+                case GLOW_FACING_NEXT -> cycleLabel(g, font, prevItem, r, "Facing", VisionSettings.glowFacing == 1 ? "Billboard" : "World", hot, accent);
+                case GLOW_PLACE_NEXT -> cycleLabel(g, font, prevItem, r, "Spawn", VisionSettings.glowPlacement == 1 ? "Random View" : "Crosshair", hot, accent);
                 case POS_NEXT -> cycleLabel(g, font, prevItem, r, "Position", LyricsHud.POSITIONS[VisionSettings.hudPosition], hot, accent);
                 case LINES_NEXT -> cycleLabel(g, font, prevItem, r, "Lines", String.valueOf(VisionSettings.hudLines), hot, accent);
                 case FLOAT_SIZE, ISLAND_SIZE, L_SIZE, L_DIST, L_SPREAD, L_SIDE -> slider(g, font, r, caption(r.id()), valueText(r.id()),

@@ -88,7 +88,7 @@ final class LyricsEngine {
             double lineEnd = i + 1 < rawLines.size()
                     ? Math.max(raw.start() + 0.12, rawLines.get(i + 1).start())
                     : raw.start() + 4.0;
-            List<RawWord> timedWords = parseWords(raw.body(), raw.start() - offset);
+            List<RawWord> timedWords = parseWords(raw.body());
             List<Word> words = new ArrayList<>();
             if (timedWords.isEmpty()) {
                 String text = stripWordTags(raw.body()).trim();
@@ -127,7 +127,7 @@ final class LyricsEngine {
         return new Track(normalized, offset);
     }
 
-    private static List<RawWord> parseWords(String body, double lineStartWithoutOffset) {
+    private static List<RawWord> parseWords(String body) {
         List<RawWord> words = new ArrayList<>();
         Matcher matcher = WORD_TIME.matcher(body);
         List<Double> times = new ArrayList<>();

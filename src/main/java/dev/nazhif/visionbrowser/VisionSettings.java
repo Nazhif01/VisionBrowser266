@@ -15,6 +15,14 @@ final class VisionSettings {
     static volatile float lyricsScale = 1.0f;    // lyric size multiplier
     static volatile String lyricsFont = "Dialog";
     static volatile boolean floatLocked = true;  // floating window follows the player
+    static final int MODE_TEXT = 0, MODE_GLOW = 1, MODE_HUD = 2;
+    static volatile int lyricsMode = MODE_TEXT;       // 0 = 3D text (vanilla world text), 1 = 3D glow texture (own fonts), 2 = HUD panel
+    static volatile float lyricsDistance = 18f;       // 3D text: blocks in front of the player (6..40)
+    static volatile float lyricsSpread = 1.0f;        // 3D text: how far left/right lines alternate (0..1.5)
+    static volatile boolean lyricsAlbumColor = true;  // active lyric takes the album-cover colour
+    static volatile int hudPosition = 0;              // 0 above crosshair, 1 centre, 2 top, 3 bottom, 4 top-left, 5 top-right
+    static volatile int hudLines = 3;                 // 2..6 lines in the HUD panel
+    static volatile boolean hudPanel = false;         // dark panel behind the HUD lyrics
 
     private static final Path FILE = Path.of("config", "visionbrowser.json");
 
@@ -32,6 +40,13 @@ final class VisionSettings {
             if (o.has("lyricsScale")) lyricsScale = clamp(o.get("lyricsScale").getAsFloat(), 0.6f, 1.6f);
             if (o.has("lyricsFont")) lyricsFont = o.get("lyricsFont").getAsString();
             if (o.has("floatLocked")) floatLocked = o.get("floatLocked").getAsBoolean();
+            if (o.has("lyricsMode")) lyricsMode = Math.max(0, Math.min(2, o.get("lyricsMode").getAsInt()));
+            if (o.has("lyricsDistance")) lyricsDistance = clamp(o.get("lyricsDistance").getAsFloat(), 6f, 40f);
+            if (o.has("lyricsSpread")) lyricsSpread = clamp(o.get("lyricsSpread").getAsFloat(), 0f, 1.5f);
+            if (o.has("lyricsAlbumColor")) lyricsAlbumColor = o.get("lyricsAlbumColor").getAsBoolean();
+            if (o.has("hudPosition")) hudPosition = Math.max(0, Math.min(5, o.get("hudPosition").getAsInt()));
+            if (o.has("hudLines")) hudLines = Math.max(2, Math.min(6, o.get("hudLines").getAsInt()));
+            if (o.has("hudPanel")) hudPanel = o.get("hudPanel").getAsBoolean();
         } catch (Throwable ignored) {
             // a broken file simply leaves the defaults in place
         }
@@ -46,6 +61,13 @@ final class VisionSettings {
             o.addProperty("lyricsScale", lyricsScale);
             o.addProperty("lyricsFont", lyricsFont);
             o.addProperty("floatLocked", floatLocked);
+            o.addProperty("lyricsMode", lyricsMode);
+            o.addProperty("lyricsDistance", lyricsDistance);
+            o.addProperty("lyricsSpread", lyricsSpread);
+            o.addProperty("lyricsAlbumColor", lyricsAlbumColor);
+            o.addProperty("hudPosition", hudPosition);
+            o.addProperty("hudLines", hudLines);
+            o.addProperty("hudPanel", hudPanel);
             Files.createDirectories(FILE.getParent());
             Files.writeString(FILE, o.toString(), StandardCharsets.UTF_8);
         } catch (Throwable ignored) {

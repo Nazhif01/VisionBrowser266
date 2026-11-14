@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** Minimal, independent floating synced-lyrics HUD. */
 final class FloatingLyrics {
-    private record Line(double time, String text) { }
+    record Line(double time, String text) { }
     private static volatile List<Line> lines = List.of();
     private static volatile String song = "";
     private static volatile String artist = "";
@@ -30,7 +30,13 @@ final class FloatingLyrics {
                 FloatingLyrics::render);
     }
 
-    static void toggle() { enabled = !enabled; }
+    static void toggle() { enabled = !enabled; modeChanged(); }
+
+    /** drop whatever the previous lyric style still shows (called when the style is switched) */
+    static void modeChanged() {
+        Lyrics3D.clear();
+        NameTagLyrics3D.clear();
+    }
     static boolean isEnabled() { return enabled; }
     static boolean hasLyrics() { return !lines.isEmpty(); }
 
@@ -94,18 +100,15 @@ final class FloatingLyrics {
         int screenWidth = client.getWindow().getGuiScaledWidth();
         int screenHeight = client.getWindow().getGuiScaledHeight();
         int centerX = screenWidth / 2;
-        int baseY = (int) (screenHeight * 0.72f);
+        int mode = VisionSettings.lyricsMode;
 
         if (current.isEmpty()) {
             Lyrics3D.clear();
+            NameTagLyrics3D.clear();
             if (song.isBlank() && message.startsWith("Play music")) return;
-            String label = song.isBlank() ? message : song + "  •  " + message;
-            int width = client.font.width(label) + 28;
-            int x = centerX - width / 2;
-            graphics.fill(x, baseY - 12, x + width, baseY + 16, 0xA8141D2B);
-            graphics.fill(x + 1, baseY - 11, x + width - 1, baseY - 10, 0x669BC9F0);
-            graphics.text(client.font, label, centerX - client.font.width(label) / 2,
-                    baseY - 3, 0xFFEAF1FF, false);
+            // frameless status text (searching / not found), no box
+            String label = song.isBlank() ? message : song + "  \u2022  " + message;
+            graphics.text(client.font, label, centerX - client.font.width(label) / 2, (int) (screenHeight * 0.62f), 0xCCD6DAE8, true);
             return;
         }
 
@@ -116,28 +119,25 @@ final class FloatingLyrics {
             else break;
         }
         if (active < 0) active = 0;
-        Lyrics3D.show(song + "#" + active, current.get(active).text());
-        if (Lyrics3D.render(graphics, client)) return; // lyrics are drawn floating in the world
-        // 3D unavailable this frame: fall back to the 2D panel below and show why
-        int first = Math.max(0, active - 1);
-        int last = Math.min(current.size() - 1, active + 1);
-        int maxWidth = 0;
-        for (int i = first; i <= last; i++) maxWidth = Math.max(maxWidth, client.font.width(current.get(i).text()));
-        int panelWidth = Math.min(screenWidth - 32, maxWidth + 48);
-        int panelHeight = (last - first + 1) * 20 + 34;
-        int panelX = centerX - panelWidth / 2;
-        int panelY = baseY - panelHeight / 2;
-        graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, 0xA8141D2B);
-        graphics.fill(panelX + 1, panelY + 1, panelX + panelWidth - 1, panelY + 2, 0xAA9BC9F0);
-        String label = song + "  •  " + artist;
-        graphics.text(client.font, label, centerX - client.font.width(label) / 2,
-                panelY + 7, 0xFFB7CBE2, false);
-        for (int i = first; i <= last; i++) {
-            String text = current.get(i).text();
-            int color = i == active ? 0xFFFFFFFF : 0xFF9BAFC8;
-            int x = centerX - client.font.width(text) / 2;
-            graphics.text(client.font, text, x, panelY + 22 + (i - first) * 20, color, false);
+        String key = song + "#" + active;
+
+        if (mode == VisionSettings.MODE_HUD) {
+            Lyrics3D.clear();
+            NameTagLyrics3D.clear();
+            LyricsHud.render(graphics, client, current, active, position, song);
+            return;
         }
-        graphics.text(client.font, Lyrics3D.status(), panelX + 6, panelY + panelHeight + 4, 0xFF8899AA, false);
+        if (mode == VisionSettings.MODE_TEXT && NameTagLyrics3D.usable()) {
+            Lyrics3D.clear();
+            long durationMs = active + 1 < current.size() ? Math.round((current.get(active + 1).time() - current.get(active).time()) * 1000) : 3500;
+            NameTagLyrics3D.update(key, current.get(active).text(), durationMs);
+            return;
+        }
+        // glow-texture 3D (chosen, or the fallback when the vanilla-text path is unavailable)
+        NameTagLyrics3D.clear();
+        Lyrics3D.show(key, current.get(active).text());
+        if (Lyrics3D.render(graphics, client)) return;
+        LyricsHud.render(graphics, client, current, active, position, song);   // last resort: HUD block
+        graphics.text(client.font, Lyrics3D.status(), 8, screenHeight - 40, 0xFF8899AA, false);
     }
 }

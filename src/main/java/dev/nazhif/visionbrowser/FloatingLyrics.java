@@ -105,7 +105,7 @@ final class FloatingLyrics {
         } else {
             for (LyricsEngine.Word word : words) {
                 if (position < word.start()) break;
-                visible.append(word.text());
+                visible.append(LyricsEngine.displayWord(words, words.indexOf(word)));
             }
         }
         return visible.toString().trim();

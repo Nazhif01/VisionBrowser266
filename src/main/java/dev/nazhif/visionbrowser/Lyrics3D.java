@@ -35,10 +35,11 @@ final class Lyrics3D {
     private static final class Line {
         final long born = System.currentTimeMillis();
         final String text;
-        final double cx, cy, cz;   // world centre at spawn
+        double cx, cy, cz;         // world centre; updated when a followed line is released
         final double rx, rz;       // horizontal "right" unit vector
         final double nx, nz;       // horizontal normal pointing at the player who saw it spawn
         final float scale = VisionSettings.lyricsScale; // size multiplier captured at spawn
+        boolean followsCrosshair;
         float lift, liftTarget;
         volatile Identifier texture;
         volatile int texW, texH;
@@ -75,30 +76,64 @@ final class Lyrics3D {
             Vec3 forward = new Vec3(-Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch),
                     Math.cos(yaw) * Math.cos(pitch)).normalize();
             Vec3 right = new Vec3(-Math.cos(yaw), 0, -Math.sin(yaw)).normalize();
-            for (Line old : lines) old.liftTarget += 1.0f;
-
-            double angle = Math.toRadians(VisionSettings.lyricsSide * 24.0);
-            double distance = DISTANCE;
-            double vertical = 0.6;
-            if (VisionSettings.glowPlacement == 1) {
-                // Random positions stay inside a 84-degree forward cone, never behind the player.
-                ThreadLocalRandom random = ThreadLocalRandom.current();
-                angle = Math.toRadians(random.nextDouble(-42.0, 42.0));
-                distance = random.nextDouble(5.5, 9.5);
-                vertical = random.nextDouble(-0.15, 1.65);
+            for (Line old : lines) {
+                old.liftTarget += 1.0f;
+                if (old.followsCrosshair) {
+                    // Freeze the previous followed lyric at the point where the next lyric arrived.
+                    old.cx = cp.x + forward.x * DISTANCE;
+                    old.cy = cp.y + forward.y * DISTANCE;
+                    old.cz = cp.z + forward.z * DISTANCE;
+                    old.followsCrosshair = false;
+                }
             }
-            Vec3 direction = forward.scale(Math.cos(angle)).add(right.scale(Math.sin(angle))).normalize();
+
             double rxs = -Math.cos(yaw), rzs = -Math.sin(yaw);
-            Line line = new Line(text,
-                    cp.x + direction.x * distance, cp.y + direction.y * distance + vertical,
-                    cp.z + direction.z * distance,
-                    rxs, rzs, -direction.x, -direction.z);
-            lines.add(line);
+            if (VisionSettings.glowPlacement == 2) {
+                // Combined mode: the newest lyric follows the crosshair, while a second copy
+                // is placed randomly in the forward view to preserve the floating lyric field.
+                Line followed = new Line(text,
+                        cp.x + forward.x * DISTANCE, cp.y + forward.y * DISTANCE,
+                        cp.z + forward.z * DISTANCE,
+                        rxs, rzs, -forward.x, -forward.z);
+                followed.followsCrosshair = true;
+                lines.add(followed);
+                rasterize(followed);
+
+                Line random = createRandomLine(text, cp, forward, right, rxs, rzs);
+                lines.add(random);
+                rasterize(random);
+            } else {
+                Line line;
+                if (VisionSettings.glowPlacement == 1) {
+                    line = createRandomLine(text, cp, forward, right, rxs, rzs);
+                } else {
+                    double angle = Math.toRadians(VisionSettings.lyricsSide * 24.0);
+                    Vec3 direction = forward.scale(Math.cos(angle)).add(right.scale(Math.sin(angle))).normalize();
+                    line = new Line(text,
+                            cp.x + direction.x * DISTANCE, cp.y + direction.y * DISTANCE + 0.6,
+                            cp.z + direction.z * DISTANCE,
+                            rxs, rzs, -direction.x, -direction.z);
+                }
+                lines.add(line);
+                rasterize(line);
+            }
             while (lines.size() > MAX_LINES) release(lines.remove(0));
-            rasterize(line);
         } catch (Throwable error) {
             status = "3D lyrics: cannot place line (" + error.getClass().getSimpleName() + ")";
         }
+    }
+
+    private static Line createRandomLine(String text, Vec3 cp, Vec3 forward, Vec3 right, double rxs, double rzs) {
+        // Random positions stay inside a 84-degree forward cone, never behind the player.
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        double angle = Math.toRadians(random.nextDouble(-42.0, 42.0));
+        double distance = random.nextDouble(5.5, 9.5);
+        double vertical = random.nextDouble(-0.15, 1.65);
+        Vec3 direction = forward.scale(Math.cos(angle)).add(right.scale(Math.sin(angle))).normalize();
+        return new Line(text,
+                cp.x + direction.x * distance, cp.y + direction.y * distance + vertical,
+                cp.z + direction.z * distance,
+                rxs, rzs, -direction.x, -direction.z);
     }
 
     static void clear() {
@@ -271,7 +306,13 @@ final class Lyrics3D {
                 double wave = animation == 3 ? Math.sin(ageSeconds * 3.8f) * 0.16f * intensity : 0.0;
                 double impactOffset = animation == 0 ? Math.sin(ageSeconds * 24f) * impact * 0.045f * intensity : 0.0;
                 double cx = l.cx + impactOffset, cy = l.cy + l.lift + wave, cz = l.cz;
-                boolean billboard = VisionSettings.glowFacing == 1;
+                boolean billboard = VisionSettings.glowFacing == 1 || l.followsCrosshair;
+                if (l.followsCrosshair) {
+                    // Keep the active lyric centred on the current camera/crosshair ray every frame.
+                    cx = cp.x + lx * DISTANCE;
+                    cy = cp.y + ly * DISTANCE + l.lift + wave;
+                    cz = cp.z + lz * DISTANCE;
+                }
                 if (!billboard && (cp.x - cx) * l.nx + (cp.z - cz) * l.nz <= 0) continue; // fixed world plane: do not show its back
                 double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
                 // Do not fade lyrics when the player approaches. In billboard mode keep a small

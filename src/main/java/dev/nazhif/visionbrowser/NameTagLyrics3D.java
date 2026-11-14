@@ -72,8 +72,12 @@ final class NameTagLyrics3D {
                 float distScale = (float) Math.pow(Math.max(4.0, dist) / 4.0, 0.82);
                 float intensity = VisionSettings.lyricsIntensity == 0 ? 0.82f
                         : VisionSettings.lyricsIntensity == 2 ? 1.22f : 1.0f;
-                float entrance = (float) Math.min(1.0, wordAge / (0.16 / intensity));
-                float pop = 0.78f + 0.22f * entrance;
+                float entrance = (float) Math.min(1.0, wordAge / (0.28 / intensity));
+                int animation = VisionSettings.lyricsAnimation;
+                float bounce = animation == 4 ? (float) Math.abs(Math.sin(wordAge * 10.5)) * (1f - entrance) * 0.34f : 0f;
+                float pulse = animation == 1 ? 1f + (float) Math.sin(now / 1000.0 * 8.5 + word.index) * 0.09f
+                        : animation == 7 ? 1f + (float) Math.sin(now / 1000.0 * 3.2 + word.index) * 0.08f : 1f;
+                float pop = (0.68f + 0.32f * entrance + bounce) * pulse;
                 float scale = (word.text.length() > 8 ? 1.65f : 1.95f)
                         * VisionSettings.lyricsScale * distScale * pop;
                 if (scale <= 0.05f) continue;
@@ -81,23 +85,18 @@ final class NameTagLyrics3D {
                 // Active word gets the bright cyan accent. Earlier words remain softly visible,
                 // while upcoming words stay hidden until their own timestamps.
                 boolean active = playback >= word.start && playback < word.end;
-                String color;
-                if (VisionSettings.lyricsRainbow) {
-                    String[] palette = {"§b", "§a", "§f", "§3", "§d"};
-                    color = palette[Math.floorMod(word.index, palette.length)];
-                } else if (active) {
-                    color = "§b";
-                } else if (VisionSettings.lyricsAlbumColor && word.index % 3 == 1) {
-                    color = "§a";
-                } else {
-                    color = word.index % 4 == 2 ? "§3" : "§f";
-                }
+                String[] palette = {"§b", "§f", "§9", "§1", "§5", "§d", "§c", "§e", "§6", "§4", "§a", "§2", "§3", "§f", "§a", "§f"};
+                String color = VisionSettings.lyricsRainbow
+                        ? palette[Math.floorMod((int) (now / 180L) + word.index, palette.length)]
+                        : palette[Math.max(0, Math.min(palette.length - 1, VisionSettings.lyricsColor))];
+                if (!active && !VisionSettings.lyricsRainbow) color = "§f";
                 if (fade < 0.55) color = "§8";
                 String formatted = color + "§l" + word.text;
 
                 // Tiny floating motion gives each word its own life without making the scene noisy.
-                double bob = Math.sin((now / 1000.0) * 1.7 + word.index * 1.31) * 0.055;
-                double punch = (1.0 - entrance) * 0.12;
+                double bob = Math.sin((now / 1000.0) * (animation == 6 ? 5.0 : 2.4) + word.index * 1.31) * (animation == 6 ? 0.19 : 0.09);
+                double glitch = animation == 5 ? Math.sin(now / 24.0 + word.index * 3.1) * (1.0 - entrance) * 0.14 : 0.0;
+                double punch = (1.0 - entrance) * (animation == 4 ? 0.34 : 0.22) + glitch;
                 ps.pushPose();
                 ps.scale(scale, scale, scale);
                 Vec3 relative = new Vec3(dx / scale, (dy + bob - punch) / scale, dz / scale);

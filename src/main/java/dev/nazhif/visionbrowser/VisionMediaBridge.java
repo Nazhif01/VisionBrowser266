@@ -18,6 +18,14 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * Reads playback state from the browser page and sends control commands back.
@@ -52,7 +60,18 @@ final class VisionMediaBridge {
     private static int tickCounter;
 
     private static final HttpClient HTTP = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(8)).build();
+            .connectTimeout(Duration.ofSeconds(5)).build();
+
+    private record LyricsCacheEntry(String lyrics, long expiresAt) { }
+    private static final Map<String, LyricsCacheEntry> LYRICS_CACHE = new ConcurrentHashMap<>();
+    private static final ExecutorService LYRICS_EXECUTOR = Executors.newFixedThreadPool(4, runnable -> {
+        Thread thread = new Thread(runnable, "VisionBrowser-LyricsProvider");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static final long POSITIVE_CACHE_MS = Duration.ofHours(12).toMillis();
+    private static final long NEGATIVE_CACHE_MS = Duration.ofMinutes(2).toMillis();
+    private static final int MAX_CACHE_ENTRIES = 128;
 
     private static final String CAPTURE_SCRIPT = ("(function(){try{"
             + "if(window.__vmV===@V@)return;window.__vmV=@V@;"
@@ -281,57 +300,86 @@ final class VisionMediaBridge {
         return durationSeconds > 0 ? Math.min(p, durationSeconds) : p;
     }
 
-    // ------------------------------------------------------------------ lyrics (unchanged behaviour, plus stale-result guard)
+    // ------------------------------------------------------------------ lyrics
+
+    private static String lyricsCacheKey(String title, String artist) {
+        return normalize(title) + "|" + normalize(artist);
+    }
+
+    private static void cacheLyrics(String key, String lyrics, long ttl) {
+        if (LYRICS_CACHE.size() >= MAX_CACHE_ENTRIES) {
+            long now = System.currentTimeMillis();
+            LYRICS_CACHE.entrySet().removeIf(entry -> entry.getValue().expiresAt() <= now);
+            if (LYRICS_CACHE.size() >= MAX_CACHE_ENTRIES) {
+                String oldest = LYRICS_CACHE.keySet().stream().findFirst().orElse(null);
+                if (oldest != null) LYRICS_CACHE.remove(oldest);
+            }
+        }
+        LYRICS_CACHE.put(key, new LyricsCacheEntry(lyrics, System.currentTimeMillis() + ttl));
+    }
 
     static void fetchLyrics(String title, String artist, double duration) {
         final String requestKey = (title + "|" + artist).toLowerCase(Locale.ROOT);
-        Thread worker = new Thread(() -> {
+        final String cacheKey = lyricsCacheKey(title, artist);
+        LyricsCacheEntry cached = LYRICS_CACHE.get(cacheKey);
+        if (cached != null && cached.expiresAt() > System.currentTimeMillis()) {
+            Minecraft.getInstance().execute(() -> {
+                if (!requestKey.equals(lastTrackKey)) return;
+                if (cached.lyrics().isBlank()) {
+                    FloatingLyrics.setUnavailable("Word-synced lyrics are not available for this track");
+                } else {
+                    FloatingLyrics.setLyrics(title, artist, cached.lyrics());
+                }
+            });
+            return;
+        }
+        if (cached != null) LYRICS_CACHE.remove(cacheKey, cached);
+
+        Thread coordinator = new Thread(() -> {
+            CompletionService<String> completed = new ExecutorCompletionService<>(LYRICS_EXECUTOR);
+            List<Future<String>> requests = new java.util.ArrayList<>(4);
+            requests.add(completed.submit(() -> fetchLiriQo(title, artist, duration, requestKey)));
+            requests.add(completed.submit(() -> fetchKaralyr(title, artist, duration, requestKey)));
+            requests.add(completed.submit(() -> {
+                String candidate = fetchLrclibExact(title, artist, duration, requestKey);
+                return LyricsEngine.hasWordTiming(candidate) ? candidate : "";
+            }));
+            requests.add(completed.submit(() -> searchLyrics(title, artist, duration, requestKey)));
+
+            String result = "";
             try {
-                // Search a multi-provider lyrics aggregator first. It can return native
-                // word/syllable timing from several catalogs, not only Karalyr's small library.
-                String enhanced = fetchLiriQo(title, artist, duration, requestKey);
-                if (enhanced.isBlank() && requestKey.equals(lastTrackKey)) {
-                    enhanced = fetchKaralyr(title, artist, duration, requestKey);
-                }
-                if (!requestKey.equals(lastTrackKey)) return;
-
-                // LRCLIB is a secondary source, but accept it only when its syncedLyrics
-                // actually contains Enhanced LRC word timestamps.
-                if (enhanced.isBlank()) {
-                    String candidate = fetchLrclibExact(title, artist, duration, requestKey);
-                    if (LyricsEngine.hasWordTiming(candidate)) enhanced = candidate;
-                }
-                if (enhanced.isBlank() && requestKey.equals(lastTrackKey)) {
-                    String candidate = searchLyrics(title, artist, duration, requestKey);
-                    if (LyricsEngine.hasWordTiming(candidate)) enhanced = candidate;
-                }
-                if (!requestKey.equals(lastTrackKey)) return;
-
-                if (enhanced.isBlank()) {
-                    Minecraft.getInstance().execute(() -> {
-                        if (requestKey.equals(lastTrackKey)) {
-                            FloatingLyrics.setUnavailable("Word-synced lyrics are not available for this track");
+                for (int i = 0; i < requests.size(); i++) {
+                    if (!requestKey.equals(lastTrackKey)) return;
+                    try {
+                        String candidate = completed.take().get();
+                        if (LyricsEngine.hasWordTiming(candidate)) {
+                            result = candidate;
+                            break;
                         }
-                    });
-                    return;
+                    } catch (Exception ignored) {
+                        // A failed provider must not delay or prevent the others.
+                    }
                 }
-
-                String result = enhanced;
-                Minecraft.getInstance().execute(() -> {
-                    if (requestKey.equals(lastTrackKey)) FloatingLyrics.setLyrics(title, artist, result);
-                });
-            } catch (Throwable error) {
-                if (requestKey.equals(lastTrackKey)) {
-                    Minecraft.getInstance().execute(() -> {
-                        if (requestKey.equals(lastTrackKey)) {
-                            FloatingLyrics.setUnavailable("Word-synced lyrics service unavailable");
-                        }
-                    });
+            } finally {
+                for (Future<String> request : requests) {
+                    if (!request.isDone()) request.cancel(true);
                 }
             }
+
+            if (!requestKey.equals(lastTrackKey)) return;
+            final String found = result;
+            cacheLyrics(cacheKey, found, found.isBlank() ? NEGATIVE_CACHE_MS : POSITIVE_CACHE_MS);
+            Minecraft.getInstance().execute(() -> {
+                if (!requestKey.equals(lastTrackKey)) return;
+                if (found.isBlank()) {
+                    FloatingLyrics.setUnavailable("Word-synced lyrics are not available for this track");
+                } else {
+                    FloatingLyrics.setLyrics(title, artist, found);
+                }
+            });
         }, "VisionBrowser-LyricsLookup");
-        worker.setDaemon(true);
-        worker.start();
+        coordinator.setDaemon(true);
+        coordinator.start();
     }
 
     private static String fetchLiriQo(String title, String artist, double duration, String requestKey) throws Exception {
@@ -342,7 +390,7 @@ final class VisionMediaBridge {
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://api.liriqo-alfarrizi.my.id/v1/lyrics?" + query))
-                .timeout(Duration.ofSeconds(30))
+                .timeout(Duration.ofSeconds(12))
                 .header("User-Agent", "VisionBrowser/0.1.0 (https://github.com/Nazhif01/VisionBrowser266)")
                 .GET().build();
         HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
@@ -380,24 +428,24 @@ final class VisionMediaBridge {
             if (words == null || words.isEmpty()) continue;
 
             lrc.append('[').append(formatLrcTime(lineStart)).append(']');
-            // Use the provider's complete line text as the authority for spaces.
-            // Word/syllable chunks can be adjacent inside a word (e.g. "won" + "dered"),
-            // so inserting a space between every timestamp corrupts the lyric.
             String canonicalLine = str(line, "text");
             int canonicalCursor = 0;
             boolean hasPreviousChunk = false;
             for (com.google.gson.JsonElement wordElement : words) {
                 if (!wordElement.isJsonObject()) continue;
                 JsonObject word = wordElement.getAsJsonObject();
-                String rawText = str(word, "text");
-                String chunk = rawText.trim();
+                String chunk = str(word, "text").trim();
                 if (chunk.isEmpty()) continue;
 
                 int match = canonicalLine.isEmpty() ? -1 : canonicalLine.indexOf(chunk, canonicalCursor);
-                if (hasPreviousChunk && match >= canonicalCursor) {
-                    // This exact substring is the real boundary from the provider's
-                    // full lyric line: empty inside a word, whitespace between words.
-                    lrc.append(canonicalLine, canonicalCursor, match);
+                if (hasPreviousChunk) {
+                    if (match >= canonicalCursor) {
+                        lrc.append(canonicalLine, canonicalCursor, match);
+                    } else if (syncLevel.equals("word")) {
+                        // Word-level provider chunks should be separated when canonical text
+                        // is missing or inconsistent. Syllable/character chunks stay joined.
+                        lrc.append(' ');
+                    }
                 }
 
                 lrc.append('<').append(formatLrcTime(num(word, "start") / 1000.0)).append('>')
@@ -405,21 +453,13 @@ final class VisionMediaBridge {
                 if (match >= canonicalCursor) canonicalCursor = match + chunk.length();
                 hasPreviousChunk = true;
             }
+            if (!canonicalLine.isEmpty() && canonicalCursor < canonicalLine.length()) {
+                lrc.append(canonicalLine.substring(canonicalCursor));
+            }
             lrc.append('\n');
         }
         String result = lrc.toString();
         return LyricsEngine.hasWordTiming(result) ? result : "";
-    }
-
-    private static boolean needsWordSeparator(String previous, String current) {
-        if (previous.isEmpty() || current.isEmpty()) return false;
-        if (Character.isWhitespace(previous.charAt(previous.length() - 1))
-                || Character.isWhitespace(current.charAt(0))) return false;
-        char first = current.charAt(0);
-        char last = previous.charAt(previous.length() - 1);
-        if (".,!?;:%)]}»”’".indexOf(first) >= 0) return false;
-        if ("([{«“‘".indexOf(last) >= 0) return false;
-        return true;
     }
 
     private static String formatLrcTime(double seconds) {
@@ -437,7 +477,7 @@ final class VisionMediaBridge {
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://karalyr.com/api/get?" + query))
-                .timeout(Duration.ofSeconds(12))
+                .timeout(Duration.ofSeconds(8))
                 .header("User-Agent", "VisionBrowser/0.1.0 (https://github.com/Nazhif01/VisionBrowser266)")
                 .header("X-Karalyr-Client", "VisionBrowser/0.1.0")
                 .GET().build();
@@ -461,7 +501,7 @@ final class VisionMediaBridge {
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://lrclib.net/api/get?" + query))
-                .timeout(Duration.ofSeconds(12))
+                .timeout(Duration.ofSeconds(8))
                 .header("User-Agent", "VisionBrowser/0.1.0 (https://github.com/Nazhif01/VisionBrowser266)")
                 .GET().build();
         HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
@@ -475,7 +515,7 @@ final class VisionMediaBridge {
                 + "&artist_name=" + URLEncoder.encode(artist, StandardCharsets.UTF_8);
         HttpRequest search = HttpRequest.newBuilder()
                 .uri(URI.create("https://lrclib.net/api/search?" + query))
-                .timeout(Duration.ofSeconds(12))
+                .timeout(Duration.ofSeconds(8))
                 .header("User-Agent", "VisionBrowser/0.1.0 (https://github.com/Nazhif01/VisionBrowser266)")
                 .GET().build();
         HttpResponse<String> response = HTTP.send(search, HttpResponse.BodyHandlers.ofString());

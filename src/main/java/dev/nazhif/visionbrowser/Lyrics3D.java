@@ -17,7 +17,8 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.concurrent.ThreadLocalRandom;\nimport java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.List;
 
 /**

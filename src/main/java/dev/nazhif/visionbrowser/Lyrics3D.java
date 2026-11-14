@@ -81,9 +81,9 @@ final class Lyrics3D {
             double distance = DISTANCE;
             double vertical = 0.6;
             if (VisionSettings.glowPlacement == 1) {
-                // Random positions stay inside a 116-degree forward cone, never behind the player.
+                // Random positions stay inside a 84-degree forward cone, never behind the player.
                 ThreadLocalRandom random = ThreadLocalRandom.current();
-                angle = Math.toRadians(random.nextDouble(-58.0, 58.0));
+                angle = Math.toRadians(random.nextDouble(-42.0, 42.0));
                 distance = random.nextDouble(5.5, 9.5);
                 vertical = random.nextDouble(-0.15, 1.65);
             }

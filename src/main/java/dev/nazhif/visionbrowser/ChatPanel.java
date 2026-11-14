@@ -117,8 +117,7 @@ final class ChatPanel {
                         y = slider(r, Id.L_SIZE, x, y, inner);
                         y = slider(r, Id.L_SPREAD, x, y, inner);
                         y = cycle(r, Id.COLOR_PREV, Id.COLOR_NEXT, x, y, inner);
-                        r.add(new Item(Id.COLOR_TOGGLE, x, y, inner, 18));
-                        y += 24;
+                        y += 2;
                     }
                     case VisionSettings.MODE_GLOW -> {
                         y = slider(r, Id.L_DIST, x, y, inner);
@@ -128,9 +127,7 @@ final class ChatPanel {
                         y = cycle(r, Id.FONT_PREV, Id.FONT_NEXT, x, y, inner);
                         y = cycle(r, Id.GLOW_FACING_PREV, Id.GLOW_FACING_NEXT, x, y, inner);
                         y = cycle(r, Id.GLOW_PLACE_PREV, Id.GLOW_PLACE_NEXT, x, y, inner);
-                        int halfGlow = (inner - 6) / 2;
-                        r.add(new Item(Id.COLOR_TOGGLE, x, y, halfGlow, 18));
-                        r.add(new Item(Id.RAINBOW_TOGGLE, x + halfGlow + 6, y, halfGlow, 18));
+                        r.add(new Item(Id.RAINBOW_TOGGLE, x, y, inner, 18));
                         y += 24;
                         r.add(new Item(Id.GLOW_TOGGLE, x, y, inner, 18));
                         y += 24;
@@ -141,8 +138,8 @@ final class ChatPanel {
                         y = cycle(r, Id.POS_PREV, Id.POS_NEXT, x, y, inner);
                         y = cycle(r, Id.LINES_PREV, Id.LINES_NEXT, x, y, inner);
                         y = slider(r, Id.L_SIZE, x, y, inner);
-                        r.add(new Item(Id.PANEL_TOGGLE, x, y, half, 18));
-                        r.add(new Item(Id.COLOR_TOGGLE, x + half + 6, y, half, 18));
+                        y = cycle(r, Id.COLOR_PREV, Id.COLOR_NEXT, x, y, inner);
+                        r.add(new Item(Id.PANEL_TOGGLE, x, y, inner, 18));
                         y += 24;
                     }
                 }
@@ -315,7 +312,7 @@ final class ChatPanel {
                 case FLOAT_TOGGLE -> button(g, font, r, FloatWindow.isEnabled() ? "Floating: On" : "Floating: Off", hot, FloatWindow.isEnabled(), accent);
                 case FLOAT_LOCK -> button(g, font, r, FloatWindow.isLocked() ? "Locked" : "Free", hot, FloatWindow.isLocked(), accent);
                 case LYR_TOGGLE -> button(g, font, r, FloatingLyrics.isEnabled() ? "Lyrics: On" : "Lyrics: Off", hot, FloatingLyrics.isEnabled(), accent);
-                case COLOR_TOGGLE -> button(g, font, r, VisionSettings.lyricsAlbumColor ? "Color: Album" : "Color: White", hot, VisionSettings.lyricsAlbumColor, accent);
+                case COLOR_TOGGLE -> button(g, font, r, "Use selected palette", hot, true, accent);
                 case RAINBOW_TOGGLE -> button(g, font, r, VisionSettings.lyricsRainbow ? "Rainbow: On" : "Rainbow: Off", hot, VisionSettings.lyricsRainbow, accent);
                 case GLOW_TOGGLE -> button(g, font, r, VisionSettings.lyricsGlow ? "Glow: On" : "Glow: Off", hot, VisionSettings.lyricsGlow, accent);
                 case PANEL_TOGGLE -> button(g, font, r, VisionSettings.hudPanel ? "Panel: On" : "Panel: Off", hot, VisionSettings.hudPanel, accent);

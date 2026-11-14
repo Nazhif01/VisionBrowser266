@@ -73,6 +73,10 @@ final class Lyrics3D {
     /** Call every frame with a key that changes whenever the active lyric line changes. */
     static void show(String key, String text) {
         if (text == null) text = "";
+        if (key.equals(lastKey) && activeLine == null && !text.isBlank()) {
+            // A new lyric line can begin with an empty progressive reveal. Spawn it when its first word arrives.
+            lastKey = "";
+        }
         if (key.equals(lastKey)) {
             if (!text.equals(lastText) && activeLine != null && !text.isBlank()) {
                 activeLine.text = text;

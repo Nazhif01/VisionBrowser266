@@ -286,7 +286,9 @@ final class ChatPanel {
         VisionSettings.save();
     }
 
-    private static void cycleColor(int dir) { VisionSettings.lyricsColor = Math.floorMod(VisionSettings.lyricsColor + dir, VisionSettings.LYRIC_COLORS.length); VisionSettings.save(); FloatingLyrics.modeChanged(); }\n\n    private static void cycleFont(int dir) {
+    private static void cycleColor(int dir) { VisionSettings.lyricsColor = Math.floorMod(VisionSettings.lyricsColor + dir, VisionSettings.LYRIC_COLORS.length); VisionSettings.save(); FloatingLyrics.modeChanged(); }
+
+    private static void cycleFont(int dir) {
         List<String> names = LyricFonts.names();
         int i = names.indexOf(VisionSettings.lyricsFont);
         if (i < 0) i = 0;
@@ -322,7 +324,8 @@ final class ChatPanel {
                 case ANIM_NEXT -> cycleLabel(g, font, prevItem, r, "Animation", ANIMATIONS[VisionSettings.lyricsAnimation], hot, accent);
                 case POWER_NEXT -> cycleLabel(g, font, prevItem, r, "Intensity", INTENSITIES[VisionSettings.lyricsIntensity], hot, accent);
                 case FONT_NEXT -> cycleLabel(g, font, prevItem, r, "Font", VisionSettings.lyricsFont, hot, accent);
-                case COLOR_NEXT -> cycleLabel(g, font, prevItem, r, "Color", VisionSettings.LYRIC_COLORS[VisionSettings.lyricsColor], hot, accent);\n                case COLOR_NEXT -> cycleLabel(g, font, prevItem, r, "Color", VisionSettings.LYRIC_COLORS[VisionSettings.lyricsColor], hot, accent);
+                case COLOR_NEXT -> cycleLabel(g, font, prevItem, r, "Color", VisionSettings.LYRIC_COLORS[VisionSettings.lyricsColor], hot, accent);
+                case COLOR_NEXT -> cycleLabel(g, font, prevItem, r, "Color", VisionSettings.LYRIC_COLORS[VisionSettings.lyricsColor], hot, accent);
                 case GLOW_FACING_PREV, GLOW_PLACE_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }
                 case GLOW_FACING_NEXT -> cycleLabel(g, font, prevItem, r, "Facing", VisionSettings.glowFacing == 1 ? "Billboard" : "World", hot, accent);
                 case GLOW_PLACE_NEXT -> cycleLabel(g, font, prevItem, r, "Spawn", VisionSettings.glowPlacement == 2 ? "Player Relative" : VisionSettings.glowPlacement == 1 ? "Random View" : "Crosshair", hot, accent);

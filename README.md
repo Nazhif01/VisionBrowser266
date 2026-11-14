@@ -31,3 +31,6 @@ GitHub Actions builds the project on pushes to `main` and pull requests targetin
 ## Credits and licensing
 
 This project uses an independent lyrics implementation and does not copy Kangetsu Lyrics code or assets. Rinku is a separate LGPL-2.1-or-later dependency and is not bundled into this mod. Synchronized lyrics are retrieved from LRCLIB.
+
+
+The default spatial presentation is **3D Words**. Select it in the chat overlay under Lyrics → Style.

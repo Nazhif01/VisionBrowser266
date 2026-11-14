@@ -34,7 +34,7 @@ final class Lyrics3D {
 
     private static final class Line {
         final long born = System.currentTimeMillis();
-        final String text;
+        String text;
         double cx, cy, cz;         // world centre; updated when a followed line is released
         final double rx, rz;       // horizontal "right" unit vector
         final double nx, nz;       // horizontal normal pointing at the player who saw it spawn
@@ -58,6 +58,8 @@ final class Lyrics3D {
 
     private static final List<Line> lines = new ArrayList<>();
     private static String lastKey = "";
+    private static String lastText = "";
+    private static Line activeLine;
     private static volatile String status = "3D lyrics: idle";
     private static long lastFrameNanos;
     private static int counter;
@@ -68,9 +70,24 @@ final class Lyrics3D {
 
     /** Call every frame with a key that changes whenever the active lyric line changes. */
     static void show(String key, String text) {
-        if (key.equals(lastKey)) return;
+        if (text == null) text = "";
+        if (key.equals(lastKey)) {
+            if (!text.equals(lastText) && activeLine != null && !text.isBlank()) {
+                activeLine.text = text;
+                Identifier previous = activeLine.texture;
+                activeLine.texture = null;
+                if (previous != null) Minecraft.getInstance().getTextureManager().release(previous);
+                activeLine.texW = 0;
+                activeLine.texH = 0;
+                activeLine.failed = false;
+                rasterize(activeLine);
+                lastText = text;
+            }
+            return;
+        }
         lastKey = key;
-        if (text == null || text.isBlank()) return;
+        lastText = text;
+        if (text.isBlank()) return;
         try {
             Minecraft mc = Minecraft.getInstance();
             Camera cam = mc.gameRenderer.mainCamera();
@@ -101,8 +118,13 @@ final class Lyrics3D {
                         rxs, rzs, -direction.x, -direction.z);
             }
             lines.add(line);
+            activeLine = line;
             rasterize(line);
-            while (lines.size() > MAX_LINES) release(lines.remove(0));
+            while (lines.size() > MAX_LINES) {
+                Line removed = lines.remove(0);
+                if (removed == activeLine) activeLine = null;
+                release(removed);
+            }
         } catch (Throwable error) {
             status = "3D lyrics: cannot place line (" + error.getClass().getSimpleName() + ")";
         }
@@ -125,6 +147,8 @@ final class Lyrics3D {
         for (Line l : lines) release(l);
         lines.clear();
         lastKey = "";
+        lastText = "";
+        activeLine = null;
     }
 
     private static void release(Line l) {

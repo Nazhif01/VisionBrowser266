@@ -54,7 +54,7 @@ final class FloatingLyrics {
         lines = List.of();
         song = title;
         artist = artistName;
-        // Fetch in the background without showing a blocking loading banner.\n        message = "";
+        // Fetch in the background without showing a blocking loading banner.
         modeChanged();
         VisionMediaBridge.fetchLyrics(title, artistName, duration);
     }
@@ -132,7 +132,7 @@ final class FloatingLyrics {
             Lyrics3D.clear();
             NameTagLyrics3D.clear();
             if (song.isBlank() && message.startsWith("Play music")) return;
-            String label = song.isBlank() ? message : song + "  \u2022  " + message;
+            String label = song.isBlank() ? message : message.isBlank() ? song : song + "  \\u2022  " + message;
             graphics.text(client.font, label, screenWidth / 2 - client.font.width(label) / 2,
                     (int) (screenHeight * 0.62f), 0xCCD6DAE8, true);
             return;

@@ -98,16 +98,10 @@ final class FloatingLyrics {
         List<LyricsEngine.Word> words = line.words();
         if (words.isEmpty()) return line.text();
         StringBuilder visible = new StringBuilder();
-        if (words.size() == 1 && words.get(0).text().trim().contains(" ")) {
-            // Plain LRC has no word timestamps. Reveal its words evenly across the line duration.
-            String[] parts = words.get(0).text().trim().split("\\s+");
-            double duration = Math.max(0.8, line.end() - line.time());
-            int count = Math.min(parts.length, Math.max(0,
-                    (int) Math.floor((position - line.time()) / Math.max(0.12, duration / parts.length)) + 1));
-            for (int i = 0; i < count; i++) {
-                if (!visible.isEmpty()) visible.append(' ');
-                visible.append(parts[i]);
-            }
+        if (words.size() == 1) {
+            // Standard LRC has only a line timestamp, not reliable per-word timing.
+            // Show the complete line at its actual timestamp instead of inventing word delays.
+            return position >= line.time() ? line.text() : "";
         } else {
             for (LyricsEngine.Word word : words) {
                 if (position < word.start()) break;

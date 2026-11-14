@@ -39,7 +39,8 @@ final class Lyrics3D {
         final double rx, rz;       // horizontal "right" unit vector
         final double nx, nz;       // horizontal normal pointing at the player who saw it spawn
         final float scale = VisionSettings.lyricsScale; // size multiplier captured at spawn
-        boolean followsCrosshair;
+        boolean followsPlayer;
+        double localX, localY, localZ;
         float lift, liftTarget;
         volatile Identifier texture;
         volatile int texW, texH;
@@ -76,47 +77,29 @@ final class Lyrics3D {
             Vec3 forward = new Vec3(-Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch),
                     Math.cos(yaw) * Math.cos(pitch)).normalize();
             Vec3 right = new Vec3(-Math.cos(yaw), 0, -Math.sin(yaw)).normalize();
-            for (Line old : lines) {
-                old.liftTarget += 1.0f;
-                if (old.followsCrosshair) {
-                    // Freeze the previous followed lyric at the point where the next lyric arrived.
-                    old.cx = cp.x + forward.x * DISTANCE;
-                    old.cy = cp.y + forward.y * DISTANCE;
-                    old.cz = cp.z + forward.z * DISTANCE;
-                    old.followsCrosshair = false;
-                }
-            }
-
             double rxs = -Math.cos(yaw), rzs = -Math.sin(yaw);
+            Line line;
             if (VisionSettings.glowPlacement == 2) {
-                // Combined mode: the newest lyric follows the crosshair, while a second copy
-                // is placed randomly in the forward view to preserve the floating lyric field.
-                Line followed = new Line(text,
-                        cp.x + forward.x * DISTANCE, cp.y + forward.y * DISTANCE,
-                        cp.z + forward.z * DISTANCE,
-                        rxs, rzs, -forward.x, -forward.z);
-                followed.followsCrosshair = true;
-                lines.add(followed);
-                rasterize(followed);
-
-                Line random = createRandomLine(text, cp, forward, right, rxs, rzs);
-                lines.add(random);
-                rasterize(random);
+                // Player Relative: keep the lyric at a fixed local offset from the player.
+                // Randomize its position around the forward view, but store that offset in player space.
+                line = createRandomLine(text, cp, forward, right, rxs, rzs);
+                line.followsPlayer = true;
+                double dx = line.cx - cp.x, dz = line.cz - cp.z;
+                line.localX = dx * right.x + dz * right.z;
+                line.localY = line.cy - cp.y;
+                line.localZ = dx * forward.x + dz * forward.z;
+            } else if (VisionSettings.glowPlacement == 1) {
+                line = createRandomLine(text, cp, forward, right, rxs, rzs);
             } else {
-                Line line;
-                if (VisionSettings.glowPlacement == 1) {
-                    line = createRandomLine(text, cp, forward, right, rxs, rzs);
-                } else {
-                    double angle = Math.toRadians(VisionSettings.lyricsSide * 24.0);
-                    Vec3 direction = forward.scale(Math.cos(angle)).add(right.scale(Math.sin(angle))).normalize();
-                    line = new Line(text,
-                            cp.x + direction.x * DISTANCE, cp.y + direction.y * DISTANCE + 0.6,
-                            cp.z + direction.z * DISTANCE,
-                            rxs, rzs, -direction.x, -direction.z);
-                }
-                lines.add(line);
-                rasterize(line);
+                double angle = Math.toRadians(VisionSettings.lyricsSide * 24.0);
+                Vec3 direction = forward.scale(Math.cos(angle)).add(right.scale(Math.sin(angle))).normalize();
+                line = new Line(text,
+                        cp.x + direction.x * DISTANCE, cp.y + direction.y * DISTANCE + 0.6,
+                        cp.z + direction.z * DISTANCE,
+                        rxs, rzs, -direction.x, -direction.z);
             }
+            lines.add(line);
+            rasterize(line);
             while (lines.size() > MAX_LINES) release(lines.remove(0));
         } catch (Throwable error) {
             status = "3D lyrics: cannot place line (" + error.getClass().getSimpleName() + ")";
@@ -306,12 +289,16 @@ final class Lyrics3D {
                 double wave = animation == 3 ? Math.sin(ageSeconds * 3.8f) * 0.16f * intensity : 0.0;
                 double impactOffset = animation == 0 ? Math.sin(ageSeconds * 24f) * impact * 0.045f * intensity : 0.0;
                 double cx = l.cx + impactOffset, cy = l.cy + l.lift + wave, cz = l.cz;
-                boolean billboard = VisionSettings.glowFacing == 1 || l.followsCrosshair;
-                if (l.followsCrosshair) {
-                    // Keep the active lyric centred on the current camera/crosshair ray every frame.
-                    cx = cp.x + lx * DISTANCE;
-                    cy = cp.y + ly * DISTANCE + l.lift + wave;
-                    cz = cp.z + lz * DISTANCE;
+                boolean billboard = VisionSettings.glowFacing == 1;
+                if (l.followsPlayer) {
+                    // Rebuild world position from the player's current position and yaw.
+                    // The stored local offset stays constant while walking and turning.
+                    double currentYaw = Math.toRadians(cam.yRot());
+                    double forwardX = -Math.sin(currentYaw), forwardZ = Math.cos(currentYaw);
+                    double rightX = -Math.cos(currentYaw), rightZ = -Math.sin(currentYaw);
+                    cx = cp.x + rightX * l.localX + forwardX * l.localZ + impactOffset;
+                    cy = cp.y + l.localY + l.lift + wave;
+                    cz = cp.z + rightZ * l.localX + forwardZ * l.localZ;
                 }
                 if (!billboard && (cp.x - cx) * l.nx + (cp.z - cz) * l.nz <= 0) continue; // fixed world plane: do not show its back
                 double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));

@@ -41,6 +41,8 @@ final class Lyrics3D {
         final float scale = VisionSettings.lyricsScale; // size multiplier captured at spawn
         boolean followsPlayer;
         double localX, localY, localZ;
+        double smoothX, smoothY, smoothZ;
+        boolean smoothReady;
         float lift, liftTarget;
         volatile Identifier texture;
         volatile int texW, texH;
@@ -137,9 +139,10 @@ final class Lyrics3D {
     private static void rasterize(Line line) {
         final int accent = IslandArt.accent();
         final String family = VisionSettings.lyricsFont;
+        final boolean glow = VisionSettings.lyricsGlow;
         Thread worker = new Thread(() -> {
             try {
-                Rendered r = renderText(line.text, accent, family);
+                Rendered r = renderText(line.text, accent, family, glow);
                 Minecraft.getInstance().execute(() -> install(line, r));
             } catch (Throwable error) {
                 line.failed = true;
@@ -162,20 +165,38 @@ final class Lyrics3D {
         line.texture = id;
     }
 
-    private static Rendered renderText(String text, int accentArgb, String family) {
+    private static Rendered renderText(String text, int accentArgb, String family, boolean glow) {
         int size = FONT_SIZE;
+        int maxLineWidth = 900;
         java.awt.Font font = LyricFonts.make(family, size, text);
         BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D pg = probe.createGraphics();
         java.awt.FontMetrics fm = pg.getFontMetrics(font);
-        while (fm.stringWidth(text) > MAX_TEX_W - 2 * PAD && size > 20) {
+        while (fm.stringWidth(text) > maxLineWidth * 2 && size > 20) {
             size -= 3;
             font = font.deriveFont((float) size);
             fm = pg.getFontMetrics(font);
         }
-        int tw = fm.stringWidth(text), th = fm.getHeight(), ascent = fm.getAscent();
+        List<String> rows = new ArrayList<>();
+        StringBuilder row = new StringBuilder();
+        for (String word : text.trim().split("\\s+")) {
+            String candidate = row.isEmpty() ? word : row + " " + word;
+            if (!row.isEmpty() && fm.stringWidth(candidate) > maxLineWidth) {
+                rows.add(row.toString());
+                row.setLength(0);
+                row.append(word);
+            } else {
+                if (!row.isEmpty()) row.append(' ');
+                row.append(word);
+            }
+        }
+        if (!row.isEmpty()) rows.add(row.toString());
+        if (rows.isEmpty()) rows.add(text);
+        int tw = 1;
+        for (String line : rows) tw = Math.max(tw, fm.stringWidth(line));
+        int th = fm.getHeight(), ascent = fm.getAscent();
         pg.dispose();
-        int w = tw + 2 * PAD, h = th + 2 * PAD;
+        int w = tw + 2 * PAD, h = rows.size() * th + 2 * PAD;
         BufferedImage base = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = base.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -183,14 +204,13 @@ final class Lyrics3D {
         g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
         g.setFont(font);
         g.setColor(java.awt.Color.WHITE);
-        g.drawString(text, PAD, PAD + ascent);
+        for (int i = 0; i < rows.size(); i++) g.drawString(rows.get(i), PAD, PAD + ascent + i * th);
         g.dispose();
 
         float[] a = new float[w * h];
         for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) a[y * w + x] = ((base.getRGB(x, y) >>> 24) & 0xFF) / 255f;
-        float[] blur = boxBlur(boxBlur(boxBlur(a, w, h, 8), w, h, 8), w, h, 8);
+        float[] blur = glow ? boxBlur(boxBlur(boxBlur(a, w, h, 8), w, h, 8), w, h, 8) : new float[w * h];
 
-        // glow colour: the cover accent mixed 35% towards white so it stays luminous on dark skies
         int ar = Math.round(((accentArgb >> 16) & 0xFF) * 0.65f + 255 * 0.35f);
         int ag = Math.round(((accentArgb >> 8) & 0xFF) * 0.65f + 255 * 0.35f);
         int ab = Math.round((accentArgb & 0xFF) * 0.65f + 255 * 0.35f);
@@ -199,15 +219,15 @@ final class Lyrics3D {
             for (int x = 0; x < w; x++) {
                 int i = y * w + x;
                 float ta = a[i];
-                float ga = Math.min(1f, blur[i] * 2.6f);
+                float ga = glow ? Math.min(1f, blur[i] * 2.6f) : 0f;
                 float oa = ta + ga * (1f - ta);
                 if (oa <= 0.003f) { out.setPixelABGR(x, y, 0); continue; }
                 float k = ga * (1f - ta);
-                int r = Math.min(255, Math.round((255f * ta + ar * k) / oa));
+                int rr = Math.min(255, Math.round((255f * ta + ar * k) / oa));
                 int gr = Math.min(255, Math.round((255f * ta + ag * k) / oa));
                 int b = Math.min(255, Math.round((255f * ta + ab * k) / oa));
                 int al = Math.min(255, Math.round(oa * 255f));
-                out.setPixelABGR(x, y, (al << 24) | (b << 16) | (gr << 8) | r);
+                out.setPixelABGR(x, y, (al << 24) | (b << 16) | (gr << 8) | rr);
             }
         }
         return new Rendered(out, w, h);
@@ -296,9 +316,18 @@ final class Lyrics3D {
                     double currentYaw = Math.toRadians(cam.yRot());
                     double forwardX = -Math.sin(currentYaw), forwardZ = Math.cos(currentYaw);
                     double rightX = -Math.cos(currentYaw), rightZ = -Math.sin(currentYaw);
-                    cx = cp.x + rightX * l.localX + forwardX * l.localZ + impactOffset;
-                    cy = cp.y + l.localY + l.lift + wave;
-                    cz = cp.z + rightZ * l.localX + forwardZ * l.localZ;
+                    double targetX = cp.x + rightX * l.localX + forwardX * l.localZ + impactOffset;
+                    double targetY = cp.y + l.localY + l.lift + wave;
+                    double targetZ = cp.z + rightZ * l.localX + forwardZ * l.localZ;
+                    if (!l.smoothReady) {
+                        l.smoothX = targetX; l.smoothY = targetY; l.smoothZ = targetZ;
+                        l.smoothReady = true;
+                    }
+                    double smooth = 1.0 - Math.exp(-dt * 7.5);
+                    l.smoothX += (targetX - l.smoothX) * smooth;
+                    l.smoothY += (targetY - l.smoothY) * smooth;
+                    l.smoothZ += (targetZ - l.smoothZ) * smooth;
+                    cx = l.smoothX; cy = l.smoothY; cz = l.smoothZ;
                 }
                 if (!billboard && (cp.x - cx) * l.nx + (cp.z - cz) * l.nz <= 0) continue; // fixed world plane: do not show its back
                 double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));

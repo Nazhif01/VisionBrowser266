@@ -248,7 +248,7 @@ final class NameTagLyrics3D {
 
             List<Word> positioned = new ArrayList<>();
             int count = tokens.size();
-            double distance = VisionSettings.lyricsDistance;
+            double distance = VisionSettings.clamp(VisionSettings.lyricsDistance, 3f, 34f);
             double spread = Math.max(0.75, VisionSettings.lyricsSpread) * 5.2;
             for (int i = 0; i < count; i++) {
                 double centered = i - (count - 1) / 2.0;

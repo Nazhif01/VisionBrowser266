@@ -33,7 +33,7 @@ final class ChatPanel {
 
     private static final int W = 208;
     private static final String[] MODES = {"3D Text", "3D Glow", "HUD"};
-    private static final String[] ANIMATIONS = {"Edit", "Karaoke", "Typewriter", "Wave"};
+    private static final String[] ANIMATIONS = {"Edit", "Pulse", "Fade In", "Wave"};
     private static final String[] INTENSITIES = {"Chill", "Normal", "Hype"};
     private static int tab = 2;                 // start on Lyrics: that is where most options live
     private static Id dragging = Id.NONE;

@@ -287,8 +287,12 @@ final class VisionMediaBridge {
         final String requestKey = (title + "|" + artist).toLowerCase(Locale.ROOT);
         Thread worker = new Thread(() -> {
             try {
-                // Prefer a provider that serves native word-level karaoke timestamps.
-                String enhanced = fetchKaralyr(title, artist, duration, requestKey);
+                // Search a multi-provider lyrics aggregator first. It can return native
+                // word/syllable timing from several catalogs, not only Karalyr's small library.
+                String enhanced = fetchLiriQo(title, artist, duration, requestKey);
+                if (enhanced.isBlank() && requestKey.equals(lastTrackKey)) {
+                    enhanced = fetchKaralyr(title, artist, duration, requestKey);
+                }
                 if (!requestKey.equals(lastTrackKey)) return;
 
                 // LRCLIB is a secondary source, but accept it only when its syncedLyrics
@@ -328,6 +332,74 @@ final class VisionMediaBridge {
         }, "VisionBrowser-LyricsLookup");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    private static String fetchLiriQo(String title, String artist, double duration, String requestKey) throws Exception {
+        String query = "title=" + URLEncoder.encode(title, StandardCharsets.UTF_8)
+                + "&artist=" + URLEncoder.encode(artist, StandardCharsets.UTF_8)
+                + "&full=1";
+        if (duration > 0 && duration < 3600) query += "&duration=" + Math.round(duration);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.liriqo-alfarrizi.my.id/v1/lyrics?" + query))
+                .timeout(Duration.ofSeconds(30))
+                .header("User-Agent", "VisionBrowser/0.1.0 (https://github.com/Nazhif01/VisionBrowser266)")
+                .GET().build();
+        HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200 || !requestKey.equals(lastTrackKey)) return "";
+
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        if (json.has("error") && !json.get("error").isJsonNull()) return "";
+        JsonObject primary = json.has("primary") && json.get("primary").isJsonObject()
+                ? json.getAsJsonObject("primary") : null;
+        if (primary == null) return "";
+
+        String syncLevel = str(primary, "syncLevel").toLowerCase(Locale.ROOT);
+        if (!syncLevel.equals("word") && !syncLevel.equals("syllable")
+                && !syncLevel.equals("character")) return "";
+
+        com.google.gson.JsonArray timed = primary.has("timed") && primary.get("timed").isJsonArray()
+                ? primary.getAsJsonArray("timed") : null;
+        if (timed == null || timed.isEmpty()) return "";
+
+        StringBuilder lrc = new StringBuilder();
+        for (com.google.gson.JsonElement element : timed) {
+            if (!element.isJsonObject()) continue;
+            JsonObject line = element.getAsJsonObject();
+            double lineStart = num(line, "start") / 1000.0;
+            com.google.gson.JsonArray words = line.has("words") && line.get("words").isJsonArray()
+                    ? line.getAsJsonArray("words") : null;
+            if (words == null && line.has("id") && primary.has("words")
+                    && primary.get("words").isJsonObject()) {
+                String id = str(line, "id");
+                JsonObject wordMap = primary.getAsJsonObject("words");
+                if (wordMap.has(id) && wordMap.get(id).isJsonArray()) {
+                    words = wordMap.getAsJsonArray(id);
+                }
+            }
+            if (words == null || words.isEmpty()) continue;
+
+            lrc.append('[').append(formatLrcTime(lineStart)).append(']');
+            for (com.google.gson.JsonElement wordElement : words) {
+                if (!wordElement.isJsonObject()) continue;
+                JsonObject word = wordElement.getAsJsonObject();
+                String text = str(word, "text");
+                if (text.isEmpty()) continue;
+                lrc.append('<').append(formatLrcTime(num(word, "start") / 1000.0)).append('>')
+                        .append(text);
+            }
+            lrc.append('\n');
+        }
+        String result = lrc.toString();
+        return LyricsEngine.hasWordTiming(result) ? result : "";
+    }
+
+    private static String formatLrcTime(double seconds) {
+        long centiseconds = Math.max(0, Math.round(seconds * 100.0));
+        long minutes = centiseconds / 6000;
+        long remainder = centiseconds % 6000;
+        return String.format(Locale.ROOT, "%02d:%02d.%02d",
+                minutes, remainder / 100, remainder % 100);
     }
 
     private static String fetchKaralyr(String title, String artist, double duration, String requestKey) throws Exception {

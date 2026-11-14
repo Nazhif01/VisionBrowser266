@@ -103,9 +103,10 @@ final class FloatingLyrics {
             // Show the complete line at its actual timestamp instead of inventing word delays.
             return position >= line.time() ? line.text() : "";
         } else {
-            for (LyricsEngine.Word word : words) {
+            for (int i = 0; i < words.size(); i++) {
+                LyricsEngine.Word word = words.get(i);
                 if (position < word.start()) break;
-                visible.append(LyricsEngine.displayWord(words, words.indexOf(word)));
+                visible.append(LyricsEngine.displayWord(words, i));
             }
         }
         return visible.toString().trim();

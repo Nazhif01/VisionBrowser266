@@ -19,7 +19,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorCompletionService;
@@ -453,7 +452,7 @@ final class VisionMediaBridge {
                 if (match >= canonicalCursor) canonicalCursor = match + chunk.length();
                 hasPreviousChunk = true;
             }
-            if (!canonicalLine.isEmpty() && canonicalCursor < canonicalLine.length()) {
+            if (!canonicalLine.isEmpty() && canonicalCursor > 0 && canonicalCursor < canonicalLine.length()) {
                 lrc.append(canonicalLine.substring(canonicalCursor));
             }
             lrc.append('\n');

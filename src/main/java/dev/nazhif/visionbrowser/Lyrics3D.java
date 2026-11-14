@@ -395,7 +395,7 @@ final class Lyrics3D {
                     int tint = VisionSettings.lyricsRainbow
                             ? (java.awt.Color.HSBtoRGB((now % 5200L) / 5200f, 0.82f, 1f) & 0xFFFFFF)
                             : (VisionSettings.lyricsAlbumColor ? IslandArt.accent() & 0xFFFFFF : 0xFFFFFF);
-                    if (intensity > 0.8f) {
+                    if (VisionSettings.lyricsGlow && intensity > 0.8f) {
                         float shift = 1.1f * intensity;
                         float[] redX = sx.clone(), blueX = sx.clone();
                         for (int i = 0; i < 4; i++) { redX[i] -= shift; blueX[i] += shift; }

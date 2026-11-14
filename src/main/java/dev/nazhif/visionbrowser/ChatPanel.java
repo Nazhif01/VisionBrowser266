@@ -14,20 +14,29 @@ import java.util.Locale;
 
 /**
  * Settings panel that appears only while the chat is open (that is when the mouse cursor is free), so no extra keybinds are needed.
- * Sliders: floating window size, Dynamic Island size, lyric side position, lyric size. Buttons: floating window on/off + lock, lyric font, lyrics on/off.
+ * Three tabs: Window (floating window), Island (Dynamic Island), Lyrics (style + the options of the chosen style).
  * The chat screen owns the input events, so the cursor position comes from MouseHandler.xpos()/ypos() and the button from MouseProbe.
  */
 final class ChatPanel {
-    private enum Id { NONE, FLOAT_TOGGLE, FLOAT_LOCK, FLOAT_SIZE, ISLAND_SIZE, FONT_PREV, FONT_NEXT, SIDE, LYRIC_SIZE, LYRICS_TOGGLE }
+    private enum Id {
+        NONE, TAB_WINDOW, TAB_ISLAND, TAB_LYRICS,
+        FLOAT_TOGGLE, FLOAT_LOCK, FLOAT_SIZE, ISLAND_SIZE,
+        LYR_TOGGLE, MODE_PREV, MODE_NEXT, L_DIST, L_SIZE, L_SPREAD, L_SIDE, COLOR_TOGGLE,
+        FONT_PREV, FONT_NEXT, POS_PREV, POS_NEXT, LINES_PREV, LINES_NEXT, PANEL_TOGGLE
+    }
 
-    private record Rect(Id id, int x, int y, int w, int h) {
+    private record Item(Id id, int x, int y, int w, int h) {
         boolean has(double mx, double my) { return mx >= x && mx < x + w && my >= y && my < y + h; }
     }
 
+    private record Layout(List<Item> items, int x, int y, int height) { }
+
     private static final int W = 208;
+    private static final String[] MODES = {"3D Text", "3D Glow", "HUD"};
+    private static int tab = 2;                 // start on Lyrics: that is where most options live
     private static Id dragging = Id.NONE;
+    private static Item dragItem;
     private static boolean prevDown;
-    private static Rect dragRect;
 
     private ChatPanel() { }
 
@@ -57,12 +66,13 @@ final class ChatPanel {
             double mx = mc.mouseHandler.xpos() * gw / (double) Math.max(1, mc.getWindow().getScreenWidth());
             double my = mc.mouseHandler.ypos() * gh / (double) Math.max(1, mc.getWindow().getScreenHeight());
             boolean down = MouseProbe.leftDown(mc);
-            List<Rect> rects = layout(gw, gh);
-            if (down && !prevDown) press(rects, mx, my);
-            if (down && dragging != Id.NONE && dragRect != null) drag(dragging, dragRect, mx);
+            Layout layout = layout(gw, gh);
+            if (down && !prevDown) press(layout, mx, my);
+            if (down && dragging != Id.NONE && dragItem != null) drag(dragging, dragItem, mx);
             if (!down && prevDown && dragging != Id.NONE) finishDrag();
             prevDown = down;
-            draw(g, mc, rects, gw, gh, mx, my);
+            layout = layout(gw, gh);   // a click may have changed the tab or style
+            draw(g, mc, layout, mx, my);
         } catch (Throwable error) {
             // never let the settings overlay break the chat
         }
@@ -70,39 +80,144 @@ final class ChatPanel {
 
     // ------------------------------------------------------------------ layout
 
-    private static int panelX(int gw) { return gw - W - 8; }
-    private static int panelY(int gh) { return Math.max(24, gh / 2 - 130); }
+    private static Layout layout(int gw, int gh) {
+        int px = gw - W - 8, x = px + 10, inner = W - 20;
+        List<Item> r = new ArrayList<>();
+        int tabW = (inner - 8) / 3, y0 = 60;
+        // first pass to know the height, second pass is the real one (y0 is clamped so the panel stays on screen)
+        int height = build(r, x, y0, inner, tabW);
+        int py = Math.max(8, Math.min(y0, gh - height - 8));
+        if (py != y0) { r.clear(); height = build(r, x, py, inner, tabW); }
+        return new Layout(r, px, py, height);
+    }
 
-    private static List<Rect> layout(int gw, int gh) {
-        int x = panelX(gw) + 10, y = panelY(gh), inner = W - 20;
-        List<Rect> r = new ArrayList<>();
+    private static int build(List<Item> r, int x, int py, int inner, int tabW) {
+        r.add(new Item(Id.TAB_WINDOW, x, py + 8, tabW, 18));
+        r.add(new Item(Id.TAB_ISLAND, x + tabW + 4, py + 8, tabW, 18));
+        r.add(new Item(Id.TAB_LYRICS, x + 2 * (tabW + 4), py + 8, tabW, 18));
+        int y = py + 34;
         int half = (inner - 6) / 2;
-        r.add(new Rect(Id.FLOAT_TOGGLE, x, y + 36, half, 20));
-        r.add(new Rect(Id.FLOAT_LOCK, x + half + 6, y + 36, half, 20));
-        r.add(new Rect(Id.FLOAT_SIZE, x, y + 74, inner, 14));
-        r.add(new Rect(Id.ISLAND_SIZE, x, y + 126, inner, 14));
-        r.add(new Rect(Id.FONT_PREV, x, y + 158, 20, 18));
-        r.add(new Rect(Id.FONT_NEXT, x + inner - 20, y + 158, 20, 18));
-        r.add(new Rect(Id.SIDE, x, y + 198, inner, 14));
-        r.add(new Rect(Id.LYRIC_SIZE, x, y + 232, inner, 14));
-        r.add(new Rect(Id.LYRICS_TOGGLE, x, y + 254, inner, 18));
-        return r;
+        switch (tab) {
+            case 0 -> {
+                r.add(new Item(Id.FLOAT_TOGGLE, x, y, half, 20));
+                r.add(new Item(Id.FLOAT_LOCK, x + half + 6, y, half, 20));
+                y += 26;
+                y = slider(r, Id.FLOAT_SIZE, x, y, inner);
+            }
+            case 1 -> y = slider(r, Id.ISLAND_SIZE, x, y, inner);
+            default -> {
+                r.add(new Item(Id.LYR_TOGGLE, x, y, inner, 18));
+                y += 24;
+                y = cycle(r, Id.MODE_PREV, Id.MODE_NEXT, x, y, inner);
+                switch (VisionSettings.lyricsMode) {
+                    case VisionSettings.MODE_TEXT -> {
+                        y = slider(r, Id.L_DIST, x, y, inner);
+                        y = slider(r, Id.L_SIZE, x, y, inner);
+                        y = slider(r, Id.L_SPREAD, x, y, inner);
+                        r.add(new Item(Id.COLOR_TOGGLE, x, y, inner, 18));
+                        y += 24;
+                    }
+                    case VisionSettings.MODE_GLOW -> {
+                        y = cycle(r, Id.FONT_PREV, Id.FONT_NEXT, x, y, inner);
+                        y = slider(r, Id.L_SIZE, x, y, inner);
+                        y = slider(r, Id.L_SIDE, x, y, inner);
+                    }
+                    default -> {
+                        y = cycle(r, Id.POS_PREV, Id.POS_NEXT, x, y, inner);
+                        y = cycle(r, Id.LINES_PREV, Id.LINES_NEXT, x, y, inner);
+                        y = slider(r, Id.L_SIZE, x, y, inner);
+                        r.add(new Item(Id.PANEL_TOGGLE, x, y, half, 18));
+                        r.add(new Item(Id.COLOR_TOGGLE, x + half + 6, y, half, 18));
+                        y += 24;
+                    }
+                }
+                y += 12; // status line
+            }
+        }
+        return (y - py) + 14;
+    }
+
+    private static int slider(List<Item> r, Id id, int x, int y, int inner) {
+        r.add(new Item(id, x, y + 11, inner, 14));
+        return y + 11 + 14 + 9;
+    }
+
+    private static int cycle(List<Item> r, Id prev, Id next, int x, int y, int inner) {
+        r.add(new Item(prev, x, y + 11, 20, 18));
+        r.add(new Item(next, x + inner - 20, y + 11, 20, 18));
+        return y + 11 + 18 + 8;
+    }
+
+    // ------------------------------------------------------------------ values
+
+    private static float min(Id id) {
+        return switch (id) { case FLOAT_SIZE -> 0.6f; case ISLAND_SIZE, L_SIZE -> 0.6f; case L_DIST -> 6f; case L_SPREAD -> 0f; case L_SIDE -> -1f; default -> 0f; };
+    }
+
+    private static float max(Id id) {
+        return switch (id) { case FLOAT_SIZE -> 7f; case ISLAND_SIZE -> 1.8f; case L_SIZE -> 1.6f; case L_DIST -> 40f; case L_SPREAD -> 1.5f; case L_SIDE -> 1f; default -> 1f; };
+    }
+
+    private static float get(Id id) {
+        return switch (id) {
+            case FLOAT_SIZE -> VisionSettings.floatWidth; case ISLAND_SIZE -> VisionSettings.islandScale; case L_SIZE -> VisionSettings.lyricsScale;
+            case L_DIST -> VisionSettings.lyricsDistance; case L_SPREAD -> VisionSettings.lyricsSpread; case L_SIDE -> VisionSettings.lyricsSide;
+            default -> 0f;
+        };
+    }
+
+    private static void set(Id id, float v) {
+        switch (id) {
+            case FLOAT_SIZE -> VisionSettings.floatWidth = v; case ISLAND_SIZE -> VisionSettings.islandScale = v; case L_SIZE -> VisionSettings.lyricsScale = v;
+            case L_DIST -> VisionSettings.lyricsDistance = v; case L_SPREAD -> VisionSettings.lyricsSpread = v; case L_SIDE -> VisionSettings.lyricsSide = v;
+            default -> { }
+        }
+    }
+
+    private static String caption(Id id) {
+        return switch (id) {
+            case FLOAT_SIZE -> "Window size"; case ISLAND_SIZE -> "Island size"; case L_SIZE -> "Text size";
+            case L_DIST -> "Distance"; case L_SPREAD -> "Spread left/right"; case L_SIDE -> "Side";
+            default -> "";
+        };
+    }
+
+    private static String valueText(Id id) {
+        float v = get(id);
+        return switch (id) {
+            case FLOAT_SIZE -> String.format(Locale.ROOT, "%.1f blocks", v);
+            case L_DIST -> String.format(Locale.ROOT, "%.0f blocks", v);
+            case L_SPREAD -> Math.round(v * 100) + "%";
+            case L_SIDE -> Math.abs(v) < 0.05f ? "Center" : (v > 0 ? "Right " : "Left ") + Math.round(Math.abs(v) * 100) + "%";
+            default -> Math.round(v * 100) + "%";
+        };
     }
 
     // ------------------------------------------------------------------ input
 
-    private static void press(List<Rect> rects, double mx, double my) {
-        for (Rect r : rects) {
+    private static void press(Layout layout, double mx, double my) {
+        for (Item r : layout.items()) {
             if (!r.has(mx, my)) continue;
             switch (r.id()) {
+                case TAB_WINDOW -> tab = 0;
+                case TAB_ISLAND -> tab = 1;
+                case TAB_LYRICS -> tab = 2;
                 case FLOAT_TOGGLE -> FloatWindow.toggle();
                 case FLOAT_LOCK -> FloatWindow.toggleLock();
-                case LYRICS_TOGGLE -> FloatingLyrics.toggle();
+                case LYR_TOGGLE -> FloatingLyrics.toggle();
+                case MODE_PREV -> cycleMode(-1);
+                case MODE_NEXT -> cycleMode(1);
                 case FONT_PREV -> cycleFont(-1);
                 case FONT_NEXT -> cycleFont(1);
-                case FLOAT_SIZE, ISLAND_SIZE, SIDE, LYRIC_SIZE -> {
+                case POS_PREV -> { VisionSettings.hudPosition = Math.floorMod(VisionSettings.hudPosition - 1, LyricsHud.POSITIONS.length); VisionSettings.save(); }
+                case POS_NEXT -> { VisionSettings.hudPosition = Math.floorMod(VisionSettings.hudPosition + 1, LyricsHud.POSITIONS.length); VisionSettings.save(); }
+                case LINES_PREV -> { VisionSettings.hudLines = Math.max(2, VisionSettings.hudLines - 1); VisionSettings.save(); }
+                case LINES_NEXT -> { VisionSettings.hudLines = Math.min(6, VisionSettings.hudLines + 1); VisionSettings.save(); }
+                case PANEL_TOGGLE -> { VisionSettings.hudPanel = !VisionSettings.hudPanel; VisionSettings.save(); }
+                case COLOR_TOGGLE -> { VisionSettings.lyricsAlbumColor = !VisionSettings.lyricsAlbumColor; VisionSettings.save(); FloatingLyrics.modeChanged(); }
+                case FLOAT_SIZE, ISLAND_SIZE, L_SIZE, L_DIST, L_SPREAD, L_SIDE -> {
                     dragging = r.id();
-                    dragRect = r;
+                    dragItem = r;
                     drag(dragging, r, mx);
                 }
                 default -> { }
@@ -111,23 +226,23 @@ final class ChatPanel {
         }
     }
 
-    private static void drag(Id id, Rect track, double mx) {
+    private static void drag(Id id, Item track, double mx) {
         float t = VisionSettings.clamp((float) ((mx - track.x()) / track.w()), 0f, 1f);
-        switch (id) {
-            case FLOAT_SIZE -> VisionSettings.floatWidth = 0.6f + t * (7.0f - 0.6f);
-            case ISLAND_SIZE -> VisionSettings.islandScale = 0.6f + t * (1.8f - 0.6f);
-            case SIDE -> VisionSettings.lyricsSide = -1f + t * 2f;
-            case LYRIC_SIZE -> VisionSettings.lyricsScale = 0.6f + t * (1.6f - 0.6f);
-            default -> { }
-        }
+        set(id, min(id) + t * (max(id) - min(id)));
     }
 
     private static void finishDrag() {
         Id was = dragging;
         dragging = Id.NONE;
-        dragRect = null;
+        dragItem = null;
         VisionSettings.save();
-        if (was == Id.SIDE || was == Id.LYRIC_SIZE) Lyrics3D.clear(); // respawn the current line with the new placement
+        if (was == Id.L_SIZE || was == Id.L_DIST || was == Id.L_SPREAD || was == Id.L_SIDE) FloatingLyrics.modeChanged();
+    }
+
+    private static void cycleMode(int dir) {
+        VisionSettings.lyricsMode = Math.floorMod(VisionSettings.lyricsMode + dir, MODES.length);
+        VisionSettings.save();
+        FloatingLyrics.modeChanged();
     }
 
     private static void cycleFont(int dir) {
@@ -136,58 +251,63 @@ final class ChatPanel {
         if (i < 0) i = 0;
         VisionSettings.lyricsFont = names.get(Math.floorMod(i + dir, names.size()));
         VisionSettings.save();
-        Lyrics3D.clear();
+        FloatingLyrics.modeChanged();
     }
 
     // ------------------------------------------------------------------ drawing (frameless glass, no outline)
 
-    private static void draw(GuiGraphicsExtractor g, Minecraft mc, List<Rect> rects, int gw, int gh, double mx, double my) {
+    private static void draw(GuiGraphicsExtractor g, Minecraft mc, Layout layout, double mx, double my) {
         Font font = mc.font;
-        int px = panelX(gw), py = panelY(gh), ph = 296;
+        int px = layout.x(), py = layout.y(), x = px + 10, inner = W - 20;
         int accent = IslandArt.accent() & 0xFFFFFF;
-        DynamicIsland.roundedRect(g, px, py, W, ph, 14, 0xA80C0C14);
+        DynamicIsland.roundedRect(g, px, py, W, layout.height(), 14, 0xA80C0C14);
         DynamicIsland.roundedRect(g, px + 2, py + 2, W - 4, 30, 12, 0x12FFFFFF);
-        int x = px + 10;
-        g.text(font, "VISION BROWSER", x, py + 9, 0xFFFFFFFF, false);
-        g.text(font, "FLOATING WINDOW", x, py + 25, 0xFF9AA0B4, false);
-        g.text(font, "DYNAMIC ISLAND", x, py + 102, 0xFF9AA0B4, false);
-        g.text(font, "3D LYRICS", x, py + 140, 0xFF9AA0B4, false);
-        for (Rect r : rects) {
+        Item prevItem = null;
+        for (Item r : layout.items()) {
             boolean hot = r.has(mx, my) || dragging == r.id();
             switch (r.id()) {
+                case TAB_WINDOW -> button(g, font, r, "Window", hot, tab == 0, accent);
+                case TAB_ISLAND -> button(g, font, r, "Island", hot, tab == 1, accent);
+                case TAB_LYRICS -> button(g, font, r, "Lyrics", hot, tab == 2, accent);
                 case FLOAT_TOGGLE -> button(g, font, r, FloatWindow.isEnabled() ? "Floating: On" : "Floating: Off", hot, FloatWindow.isEnabled(), accent);
                 case FLOAT_LOCK -> button(g, font, r, FloatWindow.isLocked() ? "Locked" : "Free", hot, FloatWindow.isLocked(), accent);
-                case LYRICS_TOGGLE -> button(g, font, r, FloatingLyrics.isEnabled() ? "Lyrics: On" : "Lyrics: Off", hot, FloatingLyrics.isEnabled(), accent);
-                case FONT_PREV -> button(g, font, r, "<", hot, false, accent);
-                case FONT_NEXT -> button(g, font, r, ">", hot, false, accent);
-                case FLOAT_SIZE -> slider(g, font, r, "Size", String.format(Locale.ROOT, "%.1f blocks", VisionSettings.floatWidth),
-                        (VisionSettings.floatWidth - 0.6f) / (7.0f - 0.6f), hot, accent);
-                case ISLAND_SIZE -> slider(g, font, r, "Size", Math.round(VisionSettings.islandScale * 100) + "%",
-                        (VisionSettings.islandScale - 0.6f) / (1.8f - 0.6f), hot, accent);
-                case SIDE -> slider(g, font, r, "Side", sideLabel(VisionSettings.lyricsSide), (VisionSettings.lyricsSide + 1f) / 2f, hot, accent);
-                case LYRIC_SIZE -> slider(g, font, r, "Size", Math.round(VisionSettings.lyricsScale * 100) + "%",
-                        (VisionSettings.lyricsScale - 0.6f) / (1.6f - 0.6f), hot, accent);
+                case LYR_TOGGLE -> button(g, font, r, FloatingLyrics.isEnabled() ? "Lyrics: On" : "Lyrics: Off", hot, FloatingLyrics.isEnabled(), accent);
+                case COLOR_TOGGLE -> button(g, font, r, VisionSettings.lyricsAlbumColor ? "Color: Album" : "Color: White", hot, VisionSettings.lyricsAlbumColor, accent);
+                case PANEL_TOGGLE -> button(g, font, r, VisionSettings.hudPanel ? "Panel: On" : "Panel: Off", hot, VisionSettings.hudPanel, accent);
+                case MODE_PREV, FONT_PREV, POS_PREV, LINES_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }
+                case MODE_NEXT -> cycleLabel(g, font, prevItem, r, "Style", MODES[VisionSettings.lyricsMode], hot, accent);
+                case FONT_NEXT -> cycleLabel(g, font, prevItem, r, "Font", VisionSettings.lyricsFont, hot, accent);
+                case POS_NEXT -> cycleLabel(g, font, prevItem, r, "Position", LyricsHud.POSITIONS[VisionSettings.hudPosition], hot, accent);
+                case LINES_NEXT -> cycleLabel(g, font, prevItem, r, "Lines", String.valueOf(VisionSettings.hudLines), hot, accent);
+                case FLOAT_SIZE, ISLAND_SIZE, L_SIZE, L_DIST, L_SPREAD, L_SIDE -> slider(g, font, r, caption(r.id()), valueText(r.id()),
+                        (get(r.id()) - min(r.id())) / (max(r.id()) - min(r.id())), hot, accent);
                 default -> { }
             }
         }
-        Rect prev = rects.get(4), next = rects.get(5);
-        String name = DynamicIsland.ellipsize(font, VisionSettings.lyricsFont, next.x() - (prev.x() + prev.w()) - 12);
-        g.text(font, name, prev.x() + prev.w() + (next.x() - (prev.x() + prev.w()) - font.width(name)) / 2, prev.y() + 5, 0xFFFFFFFF, false);
-        g.text(font, "Drag a slider, release to save", x, py + ph - 14, 0xFF6F7690, false);
+        if (tab == 2) {
+            String status = VisionSettings.lyricsMode == VisionSettings.MODE_TEXT ? NameTagLyrics3D.status() : "Style: " + MODES[VisionSettings.lyricsMode];
+            boolean bad = VisionSettings.lyricsMode == VisionSettings.MODE_TEXT && !NameTagLyrics3D.usable();
+            String text = DynamicIsland.ellipsize(font, bad ? status + " (using 3D Glow)" : status, inner);
+            g.text(font, text, x, py + layout.height() - 24, bad ? 0xFFFFAA66 : 0xFF6F7690, false);
+        }
     }
 
-    private static String sideLabel(float v) {
-        if (Math.abs(v) < 0.05f) return "Center";
-        return (v > 0 ? "Right " : "Left ") + Math.round(Math.abs(v) * 100) + "%";
+    private static void cycleLabel(GuiGraphicsExtractor g, Font font, Item prev, Item next, String caption, String value, boolean hot, int accent) {
+        button(g, font, next, ">", hot, false, accent);
+        if (prev == null) return;
+        g.text(font, caption, prev.x(), prev.y() - 11, 0xFFD6DAE8, false);
+        int gap = next.x() - (prev.x() + prev.w()) - 12;
+        String name = DynamicIsland.ellipsize(font, value, gap);
+        g.text(font, name, prev.x() + prev.w() + 6 + (gap - font.width(name)) / 2, prev.y() + 5, 0xFFFFFFFF, false);
     }
 
-    private static void button(GuiGraphicsExtractor g, Font font, Rect r, String label, boolean hot, boolean on, int accent) {
+    private static void button(GuiGraphicsExtractor g, Font font, Item r, String label, boolean hot, boolean on, int accent) {
         int fill = on ? (0x70000000 | accent) : (hot ? 0x40FFFFFF : 0x22FFFFFF);
         DynamicIsland.roundedRect(g, r.x(), r.y(), r.w(), r.h(), Math.min(8, r.h() / 2), fill);
         g.text(font, label, r.x() + (r.w() - font.width(label)) / 2, r.y() + (r.h() - 8) / 2, 0xFFFFFFFF, false);
     }
 
-    private static void slider(GuiGraphicsExtractor g, Font font, Rect r, String label, String value, float t, boolean hot, int accent) {
+    private static void slider(GuiGraphicsExtractor g, Font font, Item r, String label, String value, float t, boolean hot, int accent) {
         t = VisionSettings.clamp(t, 0f, 1f);
         g.text(font, label, r.x(), r.y() - 11, 0xFFD6DAE8, false);
         g.text(font, value, r.x() + r.w() - font.width(value), r.y() - 11, 0xFFFFFFFF, false);

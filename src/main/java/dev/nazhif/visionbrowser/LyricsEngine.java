@@ -127,6 +127,11 @@ final class LyricsEngine {
         return new Track(normalized, offset);
     }
 
+    static boolean hasWordTiming(String source) {
+        if (source == null || source.isBlank()) return false;
+        return WORD_TIME.matcher(source).find();
+    }
+
     private static List<RawWord> parseWords(String body) {
         List<RawWord> words = new ArrayList<>();
         Matcher matcher = WORD_TIME.matcher(body);

@@ -395,9 +395,20 @@ final class Lyrics3D {
                 };
                 float hw = l.texW * BLOCKS_PER_PX * l.scale * pulse * editScale / 2f;
                 float hh = l.texH * BLOCKS_PER_PX * l.scale * pulse * editScale / 2f;
-                double facingYaw = billboard ? Math.atan2(cp.x - cx, cz - cp.z) : yaw;
-                float planeRightX = billboard ? (float) -Math.cos(facingYaw) : (float) l.rx;
-                float planeRightZ = billboard ? (float) -Math.sin(facingYaw) : (float) l.rz;
+                double normalX = cp.x - cx, normalY = cp.y - cy, normalZ = cp.z - cz;
+                double normalLength = Math.max(0.0001, Math.sqrt(normalX * normalX + normalY * normalY + normalZ * normalZ));
+                normalX /= normalLength;
+                normalY /= normalLength;
+                normalZ /= normalLength;
+                // A true camera-facing basis needs both right and up vectors. Keeping up vertical
+                // makes the quad edge-on when the camera looks toward the zenith or nadir.
+                float planeRightX = billboard ? (float) (normalZ / Math.max(0.0001,
+                        Math.hypot(normalX, normalZ))) : (float) l.rx;
+                float planeRightZ = billboard ? (float) (-normalX / Math.max(0.0001,
+                        Math.hypot(normalX, normalZ))) : (float) l.rz;
+                float planeUpX = billboard ? (float) (normalY * planeRightZ) : 0f;
+                float planeUpY = billboard ? (float) (normalZ * planeRightX - normalX * planeRightZ) : 1f;
+                float planeUpZ = billboard ? (float) (-normalY * planeRightX) : 0f;
                 float rotation = (float) Math.sin(wordAgeSeconds * (animation == 5 ? 62f : animation == 6 ? 5f : 18f))
                         * impact * (animation == 5 ? 0.12f : animation == 6 ? 0.18f : 0.075f) * intensity;
                 float cs = (float) Math.cos(rotation), sn = (float) Math.sin(rotation);
@@ -407,7 +418,9 @@ final class Lyrics3D {
                 for (int i = 0; i < 4; i++) {
                     float localX = corner[i][0] * cs - corner[i][1] * sn;
                     float localY = corner[i][0] * sn + corner[i][1] * cs;
-                    double wx = cx + planeRightX * localX, wy = cy + localY, wz = cz + planeRightZ * localX;
+                    double wx = cx + planeRightX * localX + planeUpX * localY;
+                    double wy = cy + planeUpY * localY;
+                    double wz = cz + planeRightZ * localX + planeUpZ * localY;
                     float[] n = ndc(vp, wx - cp.x, wy - cp.y, wz - cp.z);
                     if (n[2] < 0.1f) { visible = false; break; }
                     sx[i] = (n[0] * signX * 0.5f + 0.5f) * gw;

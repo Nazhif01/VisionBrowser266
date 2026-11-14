@@ -17,12 +17,13 @@ final class VisionSettings {
     static volatile boolean floatLocked = true;  // floating window follows the player
     static final int MODE_TEXT = 0, MODE_GLOW = 1, MODE_HUD = 2;
     static volatile int lyricsMode = MODE_TEXT;       // default to spatial glow lyrics; 0 = vanilla 3D text, 1 = 3D glow texture, 2 = karaoke HUD
-    static volatile float lyricsDistance = 18f;       // 3D text: blocks in front of the player (6..40)
+    static volatile float lyricsDistance = 18f;       // 3D lyrics: configurable world distance (3..34 blocks)
     static volatile float lyricsSpread = 1.0f;        // 3D text: how far left/right lines alternate (0..1.5)
     static volatile boolean lyricsAlbumColor = true;  // active lyric takes the album-cover colour
     static volatile int lyricsAnimation = 4;          // 0 Edit, 1 Pulse, 2 Fade, 3 Wave, 4 Bounce, 5 Glitch, 6 Orbit, 7 Spotlight
     static volatile int lyricsIntensity = 1;          // 0 Chill, 1 Normal, 2 Hype
-    static volatile boolean lyricsRainbow = false;\n    static volatile int lyricsColor = 0;             // static palette selection    // animated spectrum tint
+    static volatile boolean lyricsRainbow = false;    // animated spectrum tint
+    static volatile int lyricsColor = 0;             // static palette selection
     static volatile boolean lyricsGlow = true;       // 3D Glow outer light effect
     static volatile int glowFacing = 1;              // 0 = fixed world plane, 1 = always face camera (billboard)
     static volatile int glowPlacement = 0;           // 0 = near crosshair, 1 = random within the forward view
@@ -54,10 +55,11 @@ final class VisionSettings {
             if (o.has("lyricsFont")) lyricsFont = o.get("lyricsFont").getAsString();
             if (o.has("floatLocked")) floatLocked = o.get("floatLocked").getAsBoolean();
             if (o.has("lyricsMode")) lyricsMode = Math.max(0, Math.min(2, o.get("lyricsMode").getAsInt()));
-            if (o.has("lyricsDistance")) lyricsDistance = clamp(o.get("lyricsDistance").getAsFloat(), 6f, 40f);
+            if (o.has("lyricsDistance")) lyricsDistance = clamp(o.get("lyricsDistance").getAsFloat(), 3f, 34f);
             if (o.has("lyricsSpread")) lyricsSpread = clamp(o.get("lyricsSpread").getAsFloat(), 0f, 1.5f);
             if (o.has("lyricsAlbumColor")) lyricsAlbumColor = o.get("lyricsAlbumColor").getAsBoolean();
-            if (o.has("lyricsAnimation")) lyricsAnimation = Math.max(0, Math.min(7, o.get("lyricsAnimation").getAsInt()));\n            if (o.has("lyricsColor")) lyricsColor = Math.max(0, Math.min(15, o.get("lyricsColor").getAsInt()));
+            if (o.has("lyricsAnimation")) lyricsAnimation = Math.max(0, Math.min(7, o.get("lyricsAnimation").getAsInt()));
+            if (o.has("lyricsColor")) lyricsColor = Math.max(0, Math.min(15, o.get("lyricsColor").getAsInt()));
             if (o.has("lyricsIntensity")) lyricsIntensity = Math.max(0, Math.min(2, o.get("lyricsIntensity").getAsInt()));
             if (o.has("lyricsRainbow")) lyricsRainbow = o.get("lyricsRainbow").getAsBoolean();
             if (o.has("lyricsGlow")) lyricsGlow = o.get("lyricsGlow").getAsBoolean();
@@ -84,7 +86,8 @@ final class VisionSettings {
             o.addProperty("lyricsDistance", lyricsDistance);
             o.addProperty("lyricsSpread", lyricsSpread);
             o.addProperty("lyricsAlbumColor", lyricsAlbumColor);
-            o.addProperty("lyricsAnimation", lyricsAnimation);\n            o.addProperty("lyricsColor", lyricsColor);
+            o.addProperty("lyricsAnimation", lyricsAnimation);
+            o.addProperty("lyricsColor", lyricsColor);
             o.addProperty("lyricsIntensity", lyricsIntensity);
             o.addProperty("lyricsRainbow", lyricsRainbow);
             o.addProperty("lyricsGlow", lyricsGlow);

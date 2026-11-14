@@ -53,7 +53,7 @@ final class VisionSettings {
             if (o.has("lyricsIntensity")) lyricsIntensity = Math.max(0, Math.min(2, o.get("lyricsIntensity").getAsInt()));
             if (o.has("lyricsRainbow")) lyricsRainbow = o.get("lyricsRainbow").getAsBoolean();
             if (o.has("glowFacing")) glowFacing = Math.max(0, Math.min(1, o.get("glowFacing").getAsInt()));
-            if (o.has("glowPlacement")) glowPlacement = Math.max(0, Math.min(1, o.get("glowPlacement").getAsInt()));
+            if (o.has("glowPlacement")) glowPlacement = Math.max(0, Math.min(2, o.get("glowPlacement").getAsInt()));
             if (o.has("hudPosition")) hudPosition = Math.max(0, Math.min(5, o.get("hudPosition").getAsInt()));
             if (o.has("hudLines")) hudLines = Math.max(2, Math.min(6, o.get("hudLines").getAsInt()));
             if (o.has("hudPanel")) hudPanel = o.get("hudPanel").getAsBoolean();

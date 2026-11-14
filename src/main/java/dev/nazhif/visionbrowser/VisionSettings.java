@@ -20,6 +20,9 @@ final class VisionSettings {
     static volatile float lyricsDistance = 18f;       // 3D text: blocks in front of the player (6..40)
     static volatile float lyricsSpread = 1.0f;        // 3D text: how far left/right lines alternate (0..1.5)
     static volatile boolean lyricsAlbumColor = true;  // active lyric takes the album-cover colour
+    static volatile int lyricsAnimation = 0;          // 0 Edit, 1 Karaoke pulse, 2 Typewriter reveal, 3 Wave
+    static volatile int lyricsIntensity = 1;          // 0 Chill, 1 Normal, 2 Hype
+    static volatile boolean lyricsRainbow = false;    // animated spectrum tint
     static volatile int hudPosition = 0;              // 0 above crosshair, 1 centre, 2 top, 3 bottom, 4 top-left, 5 top-right
     static volatile int hudLines = 3;                 // 2..6 lines in the HUD panel
     static volatile boolean hudPanel = false;         // dark panel behind the HUD lyrics
@@ -44,6 +47,9 @@ final class VisionSettings {
             if (o.has("lyricsDistance")) lyricsDistance = clamp(o.get("lyricsDistance").getAsFloat(), 6f, 40f);
             if (o.has("lyricsSpread")) lyricsSpread = clamp(o.get("lyricsSpread").getAsFloat(), 0f, 1.5f);
             if (o.has("lyricsAlbumColor")) lyricsAlbumColor = o.get("lyricsAlbumColor").getAsBoolean();
+            if (o.has("lyricsAnimation")) lyricsAnimation = Math.max(0, Math.min(3, o.get("lyricsAnimation").getAsInt()));
+            if (o.has("lyricsIntensity")) lyricsIntensity = Math.max(0, Math.min(2, o.get("lyricsIntensity").getAsInt()));
+            if (o.has("lyricsRainbow")) lyricsRainbow = o.get("lyricsRainbow").getAsBoolean();
             if (o.has("hudPosition")) hudPosition = Math.max(0, Math.min(5, o.get("hudPosition").getAsInt()));
             if (o.has("hudLines")) hudLines = Math.max(2, Math.min(6, o.get("hudLines").getAsInt()));
             if (o.has("hudPanel")) hudPanel = o.get("hudPanel").getAsBoolean();
@@ -65,6 +71,9 @@ final class VisionSettings {
             o.addProperty("lyricsDistance", lyricsDistance);
             o.addProperty("lyricsSpread", lyricsSpread);
             o.addProperty("lyricsAlbumColor", lyricsAlbumColor);
+            o.addProperty("lyricsAnimation", lyricsAnimation);
+            o.addProperty("lyricsIntensity", lyricsIntensity);
+            o.addProperty("lyricsRainbow", lyricsRainbow);
             o.addProperty("hudPosition", hudPosition);
             o.addProperty("hudLines", hudLines);
             o.addProperty("hudPanel", hudPanel);

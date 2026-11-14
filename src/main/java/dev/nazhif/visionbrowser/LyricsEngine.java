@@ -102,7 +102,7 @@ final class LyricsEngine {
                     words.add(new Word(Math.max(0, word.start() + offset), end, word.text()));
                 }
             }
-            String text = words.stream().map(Word::text).reduce("", String::concat).trim();
+            String text = joinWords(words);
             if (text.isEmpty()) text = stripWordTags(raw.body()).trim();
             if (!text.isEmpty()) lines.add(new Line(raw.start(), lineEnd, text, List.copyOf(words)));
         }
@@ -125,6 +125,30 @@ final class LyricsEngine {
             normalized.add(new Line(line.start(), end, line.text(), List.copyOf(words)));
         }
         return new Track(normalized, offset);
+    }
+
+    static String displayWord(List<Word> words, int index) {
+        if (index < 0 || index >= words.size()) return "";
+        String current = words.get(index).text().trim();
+        if (current.isEmpty() || index + 1 >= words.size()) return current;
+        String next = words.get(index + 1).text().trim();
+        if (needsSeparator(current, next)) return current + " ";
+        return current;
+    }
+
+    static String joinWords(List<Word> words) {
+        StringBuilder joined = new StringBuilder();
+        for (int i = 0; i < words.size(); i++) joined.append(displayWord(words, i));
+        return joined.toString().trim();
+    }
+
+    private static boolean needsSeparator(String previous, String current) {
+        if (previous.isEmpty() || current.isEmpty()) return false;
+        char first = current.charAt(0);
+        char last = previous.charAt(previous.length() - 1);
+        if (".,!?;:%)]}»”’".indexOf(first) >= 0) return false;
+        if ("([{«“‘".indexOf(last) >= 0) return false;
+        return true;
     }
 
     static boolean hasWordTiming(String source) {

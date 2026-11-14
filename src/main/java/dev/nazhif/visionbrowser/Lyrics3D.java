@@ -142,7 +142,7 @@ final class Lyrics3D {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         double angle = Math.toRadians(random.nextDouble(-42.0, 42.0));
         double configured = VisionSettings.clamp(VisionSettings.lyricsDistance, MIN_DISTANCE, 34f);
-        double distance = VisionSettings.clamp(configured + random.nextDouble(-0.8, 0.8), MIN_DISTANCE, 34f);
+        double distance = VisionSettings.clamp((float) (configured + random.nextDouble(-0.8, 0.8)), MIN_DISTANCE, 34f);
         double vertical = random.nextDouble(-0.15, 1.65);
         Vec3 direction = forward.scale(Math.cos(angle)).add(right.scale(Math.sin(angle))).normalize();
         return new Line(text,

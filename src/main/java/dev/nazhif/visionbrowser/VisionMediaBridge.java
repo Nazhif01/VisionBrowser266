@@ -380,18 +380,38 @@ final class VisionMediaBridge {
             if (words == null || words.isEmpty()) continue;
 
             lrc.append('[').append(formatLrcTime(lineStart)).append(']');
+            String previousChunk = "";
             for (com.google.gson.JsonElement wordElement : words) {
                 if (!wordElement.isJsonObject()) continue;
                 JsonObject word = wordElement.getAsJsonObject();
                 String text = str(word, "text");
                 if (text.isEmpty()) continue;
+
+                // Word-level providers often return each token without a trailing
+                // whitespace character. Enhanced LRC preserves chunk text verbatim,
+                // so add the missing word boundary without shifting any timestamps.
+                if (syncLevel.equals("word") && needsWordSeparator(previousChunk, text)) {
+                    lrc.append(' ');
+                }
                 lrc.append('<').append(formatLrcTime(num(word, "start") / 1000.0)).append('>')
                         .append(text);
+                previousChunk = text;
             }
             lrc.append('\n');
         }
         String result = lrc.toString();
         return LyricsEngine.hasWordTiming(result) ? result : "";
+    }
+
+    private static boolean needsWordSeparator(String previous, String current) {
+        if (previous.isEmpty() || current.isEmpty()) return false;
+        if (Character.isWhitespace(previous.charAt(previous.length() - 1))
+                || Character.isWhitespace(current.charAt(0))) return false;
+        char first = current.charAt(0);
+        char last = previous.charAt(previous.length() - 1);
+        if (".,!?;:%)]}»”’".indexOf(first) >= 0) return false;
+        if ("([{«“‘".indexOf(last) >= 0) return false;
+        return true;
     }
 
     private static String formatLrcTime(double seconds) {

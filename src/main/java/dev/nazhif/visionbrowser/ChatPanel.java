@@ -322,7 +322,6 @@ final class ChatPanel {
                 case POWER_NEXT -> cycleLabel(g, font, prevItem, r, "Intensity", INTENSITIES[VisionSettings.lyricsIntensity], hot, accent);
                 case FONT_NEXT -> cycleLabel(g, font, prevItem, r, "Font", VisionSettings.lyricsFont, hot, accent);
                 case COLOR_NEXT -> cycleLabel(g, font, prevItem, r, "Color", VisionSettings.LYRIC_COLORS[VisionSettings.lyricsColor], hot, accent);
-                case COLOR_NEXT -> cycleLabel(g, font, prevItem, r, "Color", VisionSettings.LYRIC_COLORS[VisionSettings.lyricsColor], hot, accent);
                 case GLOW_FACING_PREV, GLOW_PLACE_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }
                 case GLOW_FACING_NEXT -> cycleLabel(g, font, prevItem, r, "Facing", VisionSettings.glowFacing == 1 ? "Billboard" : "World", hot, accent);
                 case GLOW_PLACE_NEXT -> cycleLabel(g, font, prevItem, r, "Spawn", VisionSettings.glowPlacement == 2 ? "Player Relative" : VisionSettings.glowPlacement == 1 ? "Random View" : "Crosshair", hot, accent);

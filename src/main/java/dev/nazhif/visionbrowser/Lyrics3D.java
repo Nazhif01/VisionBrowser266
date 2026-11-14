@@ -407,10 +407,12 @@ final class Lyrics3D {
                         sx[i] = centerX + (sx[i] - centerX) * fit;
                         sy[i] = centerY + (sy[i] - centerY) * fit;
                     }
-                    minX = centerX - (maxX - minX) * fit * 0.5f;
-                    maxX = centerX + (maxX - minX) * 0.5f;
-                    minY = centerY - (maxY - minY) * fit * 0.5f;
-                    maxY = centerY + (maxY - minY) * fit * 0.5f;
+                    float fittedW = (maxX - minX) * fit;
+                    float fittedH = (maxY - minY) * fit;
+                    minX = centerX - fittedW * 0.5f;
+                    maxX = centerX + fittedW * 0.5f;
+                    minY = centerY - fittedH * 0.5f;
+                    maxY = centerY + fittedH * 0.5f;
                     float shiftX = minX < safe ? safe - minX : maxX > gw - safe ? (gw - safe) - maxX : 0f;
                     float shiftY = minY < safe ? safe - minY : maxY > gh - safe ? (gh - safe) - maxY : 0f;
                     for (int i = 0; i < 4; i++) { sx[i] += shiftX; sy[i] += shiftY; }

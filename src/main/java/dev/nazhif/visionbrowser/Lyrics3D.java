@@ -16,7 +16,7 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.Iterator;\nimport java.util.concurrent.ThreadLocalRandom;
 import java.util.List;
 
 /**
@@ -255,7 +255,7 @@ final class Lyrics3D {
                 double wave = animation == 3 ? Math.sin(ageSeconds * 3.8f) * 0.16f * intensity : 0.0;
                 double impactOffset = animation == 0 ? Math.sin(ageSeconds * 24f) * impact * 0.045f * intensity : 0.0;
                 double cx = l.cx + impactOffset, cy = l.cy + l.lift + wave, cz = l.cz;
-                if ((cp.x - cx) * l.nx + (cp.z - cz) * l.nz <= 0) continue; // seen from behind
+                boolean billboard = VisionSettings.glowFacing == 1;\n                if (!billboard && (cp.x - cx) * l.nx + (cp.z - cz) * l.nz <= 0) continue; // fixed world plane: do not show its back
                 double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
                 alpha *= (float) Math.max(0, Math.min(1, (dist - 0.8) / 1.5)) * (float) Math.max(0, Math.min(1, (64 - dist) / 24));
                 int a255 = Math.round(alpha * 255f);
@@ -272,7 +272,7 @@ final class Lyrics3D {
                 for (int i = 0; i < 4; i++) {
                     float localX = corner[i][0] * cs - corner[i][1] * sn;
                     float localY = corner[i][0] * sn + corner[i][1] * cs;
-                    double wx = cx + l.rx * localX, wy = cy + localY, wz = cz + l.rz * localX;
+                    double wx = cx + planeRightX * localX, wy = cy + localY, wz = cz + planeRightZ * localX;
                     float[] n = ndc(vp, wx - cp.x, wy - cp.y, wz - cp.z);
                     if (n[2] < 0.1f) { visible = false; break; }
                     sx[i] = (n[0] * signX * 0.5f + 0.5f) * gw;

@@ -22,7 +22,7 @@ final class ChatPanel {
         NONE, TAB_WINDOW, TAB_ISLAND, TAB_LYRICS,
         FLOAT_TOGGLE, FLOAT_LOCK, FLOAT_SIZE, ISLAND_SIZE,
         LYR_TOGGLE, MODE_PREV, MODE_NEXT, L_DIST, L_SIZE, L_SPREAD, L_SIDE, COLOR_TOGGLE,
-        FONT_PREV, FONT_NEXT, POS_PREV, POS_NEXT, LINES_PREV, LINES_NEXT, PANEL_TOGGLE
+        FONT_PREV, FONT_NEXT, POS_PREV, POS_NEXT, LINES_PREV, LINES_NEXT, PANEL_TOGGLE, ANIM_PREV, ANIM_NEXT, POWER_PREV, POWER_NEXT, RAINBOW_TOGGLE
     }
 
     private record Item(Id id, int x, int y, int w, int h) {
@@ -33,6 +33,8 @@ final class ChatPanel {
 
     private static final int W = 208;
     private static final String[] MODES = {"3D Text", "3D Glow", "HUD"};
+    private static final String[] ANIMATIONS = {"Edit", "Karaoke", "Typewriter", "Wave"};
+    private static final String[] INTENSITIES = {"Chill", "Normal", "Hype"};
     private static int tab = 2;                 // start on Lyrics: that is where most options live
     private static Id dragging = Id.NONE;
     private static Item dragItem;
@@ -245,6 +247,16 @@ final class ChatPanel {
         FloatingLyrics.modeChanged();
     }
 
+    private static void cycleAnimation(int dir) {
+        VisionSettings.lyricsAnimation = Math.floorMod(VisionSettings.lyricsAnimation + dir, ANIMATIONS.length);
+        VisionSettings.save();
+    }
+
+    private static void cycleIntensity(int dir) {
+        VisionSettings.lyricsIntensity = Math.floorMod(VisionSettings.lyricsIntensity + dir, INTENSITIES.length);
+        VisionSettings.save();
+    }
+
     private static void cycleFont(int dir) {
         List<String> names = LyricFonts.names();
         int i = names.indexOf(VisionSettings.lyricsFont);
@@ -273,9 +285,12 @@ final class ChatPanel {
                 case FLOAT_LOCK -> button(g, font, r, FloatWindow.isLocked() ? "Locked" : "Free", hot, FloatWindow.isLocked(), accent);
                 case LYR_TOGGLE -> button(g, font, r, FloatingLyrics.isEnabled() ? "Lyrics: On" : "Lyrics: Off", hot, FloatingLyrics.isEnabled(), accent);
                 case COLOR_TOGGLE -> button(g, font, r, VisionSettings.lyricsAlbumColor ? "Color: Album" : "Color: White", hot, VisionSettings.lyricsAlbumColor, accent);
+                case RAINBOW_TOGGLE -> button(g, font, r, VisionSettings.lyricsRainbow ? "Rainbow: On" : "Rainbow: Off", hot, VisionSettings.lyricsRainbow, accent);
                 case PANEL_TOGGLE -> button(g, font, r, VisionSettings.hudPanel ? "Panel: On" : "Panel: Off", hot, VisionSettings.hudPanel, accent);
-                case MODE_PREV, FONT_PREV, POS_PREV, LINES_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }
+                case MODE_PREV, FONT_PREV, POS_PREV, LINES_PREV, ANIM_PREV, POWER_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }
                 case MODE_NEXT -> cycleLabel(g, font, prevItem, r, "Style", MODES[VisionSettings.lyricsMode], hot, accent);
+                case ANIM_NEXT -> cycleLabel(g, font, prevItem, r, "Animation", ANIMATIONS[VisionSettings.lyricsAnimation], hot, accent);
+                case POWER_NEXT -> cycleLabel(g, font, prevItem, r, "Intensity", INTENSITIES[VisionSettings.lyricsIntensity], hot, accent);
                 case FONT_NEXT -> cycleLabel(g, font, prevItem, r, "Font", VisionSettings.lyricsFont, hot, accent);
                 case POS_NEXT -> cycleLabel(g, font, prevItem, r, "Position", LyricsHud.POSITIONS[VisionSettings.hudPosition], hot, accent);
                 case LINES_NEXT -> cycleLabel(g, font, prevItem, r, "Lines", String.valueOf(VisionSettings.hudLines), hot, accent);

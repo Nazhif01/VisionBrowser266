@@ -287,42 +287,41 @@ final class VisionMediaBridge {
         final String requestKey = (title + "|" + artist).toLowerCase(Locale.ROOT);
         Thread worker = new Thread(() -> {
             try {
-                String query = "track_name=" + URLEncoder.encode(title, StandardCharsets.UTF_8)
-                        + "&artist_name=" + URLEncoder.encode(artist, StandardCharsets.UTF_8);
-                if (duration > 0 && duration < 3600) query += "&duration=" + Math.round(duration);
-
-                String synced = "";
-                HttpRequest exact = HttpRequest.newBuilder()
-                        .uri(URI.create("https://lrclib.net/api/get?" + query))
-                        .timeout(Duration.ofSeconds(12))
-                        .header("User-Agent", "VisionBrowser/0.1.0 (Minecraft Fabric mod)")
-                        .GET().build();
-                HttpResponse<String> response = HTTP.send(exact, HttpResponse.BodyHandlers.ofString());
+                // Prefer a provider that serves native word-level karaoke timestamps.
+                String enhanced = fetchKaralyr(title, artist, duration, requestKey);
                 if (!requestKey.equals(lastTrackKey)) return;
-                if (response.statusCode() == 200) {
-                    JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
-                    synced = json.has("syncedLyrics") && !json.get("syncedLyrics").isJsonNull()
-                            ? json.get("syncedLyrics").getAsString() : "";
+
+                // LRCLIB is a secondary source, but accept it only when its syncedLyrics
+                // actually contains Enhanced LRC word timestamps.
+                if (enhanced.isBlank()) {
+                    String candidate = fetchLrclibExact(title, artist, duration, requestKey);
+                    if (LyricsEngine.hasWordTiming(candidate)) enhanced = candidate;
                 }
-
-                // Exact lookup can miss alternate punctuation, featured artists, and release metadata.
-                // Search fallback is still restricted to the song currently playing in Vision Browser.
-                if (synced.isBlank()) synced = searchLyrics(title, artist, duration, requestKey);
+                if (enhanced.isBlank() && requestKey.equals(lastTrackKey)) {
+                    String candidate = searchLyrics(title, artist, duration, requestKey);
+                    if (LyricsEngine.hasWordTiming(candidate)) enhanced = candidate;
+                }
                 if (!requestKey.equals(lastTrackKey)) return;
 
-                if (synced.isBlank()) {
-                    Minecraft.getInstance().execute(() ->
-                            FloatingLyrics.setUnavailable("No synchronized lyrics found"));
+                if (enhanced.isBlank()) {
+                    Minecraft.getInstance().execute(() -> {
+                        if (requestKey.equals(lastTrackKey)) {
+                            FloatingLyrics.setUnavailable("Word-synced lyrics are not available for this track");
+                        }
+                    });
                     return;
                 }
-                String result = synced;
+
+                String result = enhanced;
                 Minecraft.getInstance().execute(() -> {
                     if (requestKey.equals(lastTrackKey)) FloatingLyrics.setLyrics(title, artist, result);
                 });
             } catch (Throwable error) {
                 if (requestKey.equals(lastTrackKey)) {
                     Minecraft.getInstance().execute(() -> {
-                        if (requestKey.equals(lastTrackKey)) FloatingLyrics.setUnavailable("Lyrics service unavailable");
+                        if (requestKey.equals(lastTrackKey)) {
+                            FloatingLyrics.setUnavailable("Word-synced lyrics service unavailable");
+                        }
                     });
                 }
             }
@@ -331,13 +330,53 @@ final class VisionMediaBridge {
         worker.start();
     }
 
+    private static String fetchKaralyr(String title, String artist, double duration, String requestKey) throws Exception {
+        String query = "track_name=" + URLEncoder.encode(title, StandardCharsets.UTF_8)
+                + "&artist_name=" + URLEncoder.encode(artist, StandardCharsets.UTF_8);
+        if (duration > 0 && duration < 3600) query += "&duration=" + Math.round(duration);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://karalyr.com/api/get?" + query))
+                .timeout(Duration.ofSeconds(12))
+                .header("User-Agent", "VisionBrowser/0.1.0 (https://github.com/Nazhif01/VisionBrowser266)")
+                .header("X-Karalyr-Client", "VisionBrowser/0.1.0")
+                .GET().build();
+        HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200 || !requestKey.equals(lastTrackKey)) return "";
+
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        JsonObject metadata = json.has("karalyr") && json.get("karalyr").isJsonObject()
+                ? json.getAsJsonObject("karalyr") : null;
+        if (metadata == null || !metadata.has("has_word_timing")
+                || !metadata.get("has_word_timing").getAsBoolean()) return "";
+
+        String lyrics = str(json, "syncedLyrics");
+        return LyricsEngine.hasWordTiming(lyrics) ? lyrics : "";
+    }
+
+    private static String fetchLrclibExact(String title, String artist, double duration, String requestKey) throws Exception {
+        String query = "track_name=" + URLEncoder.encode(title, StandardCharsets.UTF_8)
+                + "&artist_name=" + URLEncoder.encode(artist, StandardCharsets.UTF_8);
+        if (duration > 0 && duration < 3600) query += "&duration=" + Math.round(duration);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://lrclib.net/api/get?" + query))
+                .timeout(Duration.ofSeconds(12))
+                .header("User-Agent", "VisionBrowser/0.1.0 (https://github.com/Nazhif01/VisionBrowser266)")
+                .GET().build();
+        HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200 || !requestKey.equals(lastTrackKey)) return "";
+        JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+        return str(json, "syncedLyrics");
+    }
+
     private static String searchLyrics(String title, String artist, double duration, String requestKey) throws Exception {
         String query = "track_name=" + URLEncoder.encode(title, StandardCharsets.UTF_8)
                 + "&artist_name=" + URLEncoder.encode(artist, StandardCharsets.UTF_8);
         HttpRequest search = HttpRequest.newBuilder()
                 .uri(URI.create("https://lrclib.net/api/search?" + query))
                 .timeout(Duration.ofSeconds(12))
-                .header("User-Agent", "VisionBrowser/0.1.0 (Minecraft Fabric mod)")
+                .header("User-Agent", "VisionBrowser/0.1.0 (https://github.com/Nazhif01/VisionBrowser266)")
                 .GET().build();
         HttpResponse<String> response = HTTP.send(search, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200 || !requestKey.equals(lastTrackKey)) return "";
@@ -350,13 +389,11 @@ final class VisionMediaBridge {
         for (com.google.gson.JsonElement element : results) {
             if (!element.isJsonObject()) continue;
             JsonObject item = element.getAsJsonObject();
-            String candidateTitle = str(item, "trackName");
-            String candidateArtist = str(item, "artistName");
             String lyrics = str(item, "syncedLyrics");
-            if (lyrics.isBlank()) continue;
+            if (!LyricsEngine.hasWordTiming(lyrics)) continue;
 
-            String normalizedTitle = normalize(candidateTitle);
-            String normalizedArtist = normalize(candidateArtist);
+            String normalizedTitle = normalize(str(item, "trackName"));
+            String normalizedArtist = normalize(str(item, "artistName"));
             double score = similarity(wantedTitle, normalizedTitle) * 5.0
                     + similarity(wantedArtist, normalizedArtist) * 3.0;
             double candidateDuration = num(item, "duration");

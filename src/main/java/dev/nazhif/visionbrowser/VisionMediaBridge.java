@@ -341,12 +341,12 @@ final class VisionMediaBridge {
             requests.add(completed.submit(() -> fetchLiriQo(title, artist, duration, requestKey)));
             requests.add(completed.submit(() -> fetchKaralyr(title, artist, duration, requestKey)));
             requests.add(completed.submit(() -> {
-                String candidate = fetchLrclibExact(title, artist, duration, requestKey);
-                return LyricsEngine.hasWordTiming(candidate) ? candidate : "";
+                return fetchLrclibExact(title, artist, duration, requestKey);
             }));
             requests.add(completed.submit(() -> searchLyrics(title, artist, duration, requestKey)));
 
             String result = "";
+            String lineTimedFallback = "";
             try {
                 for (int i = 0; i < requests.size(); i++) {
                     if (!requestKey.equals(lastTrackKey)) return;
@@ -356,10 +356,14 @@ final class VisionMediaBridge {
                             result = candidate;
                             break;
                         }
+                        if (lineTimedFallback.isBlank() && hasTimedLines(candidate)) {
+                            lineTimedFallback = candidate;
+                        }
                     } catch (Exception ignored) {
                         // A failed provider must not delay or prevent the others.
                     }
                 }
+                if (result.isBlank()) result = lineTimedFallback;
             } finally {
                 for (Future<String> request : requests) {
                     if (!request.isDone()) request.cancel(true);
@@ -530,7 +534,7 @@ final class VisionMediaBridge {
             if (!element.isJsonObject()) continue;
             JsonObject item = element.getAsJsonObject();
             String lyrics = str(item, "syncedLyrics");
-            if (!LyricsEngine.hasWordTiming(lyrics)) continue;
+            if (!hasTimedLines(lyrics)) continue;
 
             String normalizedTitle = normalize(str(item, "trackName"));
             String normalizedArtist = normalize(str(item, "artistName"));
@@ -546,6 +550,11 @@ final class VisionMediaBridge {
             }
         }
         return bestScore >= 4.0 ? bestLyrics : "";
+    }
+
+    private static boolean hasTimedLines(String lyrics) {
+        return lyrics != null && !lyrics.isBlank()
+                && !LyricsEngine.parse(lyrics).lines().isEmpty();
     }
 
     private static String normalize(String value) {

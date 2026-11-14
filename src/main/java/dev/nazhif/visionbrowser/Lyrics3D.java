@@ -16,7 +16,8 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
-import java.util.Iterator;\nimport java.util.concurrent.ThreadLocalRandom;
+import java.util.Iterator;
+import java.util.concurrent.ThreadLocalRandom;\nimport java.util.concurrent.ThreadLocalRandom;
 import java.util.List;
 
 /**
@@ -71,12 +72,27 @@ final class Lyrics3D {
             Camera cam = mc.gameRenderer.mainCamera();
             Vec3 cp = cam.position();
             double yaw = Math.toRadians(cam.yRot()), pitch = Math.toRadians(cam.xRot());
-            double lx = -Math.sin(yaw) * Math.cos(pitch), ly = -Math.sin(pitch), lz = Math.cos(yaw) * Math.cos(pitch);
+            Vec3 forward = new Vec3(-Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch),
+                    Math.cos(yaw) * Math.cos(pitch)).normalize();
+            Vec3 right = new Vec3(-Math.cos(yaw), 0, -Math.sin(yaw)).normalize();
             for (Line old : lines) old.liftTarget += 1.0f;
-            // placed to the SIDE of the view (slider: left .. right) so the lyrics never sit right in front of the player's eyes
-            double rxs = -Math.cos(yaw), rzs = -Math.sin(yaw), lat = VisionSettings.lyricsSide * 4.5;
-            Line line = new Line(text, cp.x + lx * DISTANCE + rxs * lat, cp.y + ly * DISTANCE + 0.6, cp.z + lz * DISTANCE + rzs * lat,
-                    -Math.cos(yaw), -Math.sin(yaw), Math.sin(yaw), -Math.cos(yaw));
+
+            double angle = Math.toRadians(VisionSettings.lyricsSide * 24.0);
+            double distance = DISTANCE;
+            double vertical = 0.6;
+            if (VisionSettings.glowPlacement == 1) {
+                // Random positions stay inside a 116-degree forward cone, never behind the player.
+                ThreadLocalRandom random = ThreadLocalRandom.current();
+                angle = Math.toRadians(random.nextDouble(-58.0, 58.0));
+                distance = random.nextDouble(5.5, 9.5);
+                vertical = random.nextDouble(-0.15, 1.65);
+            }
+            Vec3 direction = forward.scale(Math.cos(angle)).add(right.scale(Math.sin(angle))).normalize();
+            double rxs = -Math.cos(yaw), rzs = -Math.sin(yaw);
+            Line line = new Line(text,
+                    cp.x + direction.x * distance, cp.y + direction.y * distance + vertical,
+                    cp.z + direction.z * distance,
+                    rxs, rzs, -direction.x, -direction.z);
             lines.add(line);
             while (lines.size() > MAX_LINES) release(lines.remove(0));
             rasterize(line);
@@ -255,7 +271,8 @@ final class Lyrics3D {
                 double wave = animation == 3 ? Math.sin(ageSeconds * 3.8f) * 0.16f * intensity : 0.0;
                 double impactOffset = animation == 0 ? Math.sin(ageSeconds * 24f) * impact * 0.045f * intensity : 0.0;
                 double cx = l.cx + impactOffset, cy = l.cy + l.lift + wave, cz = l.cz;
-                boolean billboard = VisionSettings.glowFacing == 1;\n                if (!billboard && (cp.x - cx) * l.nx + (cp.z - cz) * l.nz <= 0) continue; // fixed world plane: do not show its back
+                boolean billboard = VisionSettings.glowFacing == 1;
+                if (!billboard && (cp.x - cx) * l.nx + (cp.z - cz) * l.nz <= 0) continue; // fixed world plane: do not show its back
                 double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
                 alpha *= (float) Math.max(0, Math.min(1, (dist - 0.8) / 1.5)) * (float) Math.max(0, Math.min(1, (64 - dist) / 24));
                 int a255 = Math.round(alpha * 255f);
@@ -264,6 +281,9 @@ final class Lyrics3D {
                 float editScale = animation == 0 ? 1f + impact * 0.18f * intensity : 1f;
                 float hw = l.texW * BLOCKS_PER_PX * l.scale * pulse * editScale / 2f;
                 float hh = l.texH * BLOCKS_PER_PX * l.scale * pulse * editScale / 2f;
+                double facingYaw = billboard ? Math.atan2(cp.x - cx, cz - cp.z) : yaw;
+                float planeRightX = billboard ? (float) -Math.cos(facingYaw) : (float) l.rx;
+                float planeRightZ = billboard ? (float) -Math.sin(facingYaw) : (float) l.rz;
                 float rotation = animation == 0 ? (float) Math.sin(ageSeconds * 18f) * impact * 0.055f * intensity : 0f;
                 float cs = (float) Math.cos(rotation), sn = (float) Math.sin(rotation);
                 float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}}; // TL, TR, BR, BL

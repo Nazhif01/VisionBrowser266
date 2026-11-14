@@ -104,7 +104,7 @@ final class LyricsHud {
                 else if (i == activeWord) color = 0xFFFFFFFF;
                 else color = 0xFF858D9E;
                 if (i == activeWord) {
-                    String value = "\u00a7l" + word.text();
+                    String value = "\\u00a7l" + displayText;
                     g.text(font, value, cursor, 0, color, true);
                 } else {
                     g.text(font, displayText, cursor, 0, color, i < activeWord);

@@ -35,6 +35,7 @@ public final class VisionBrowserClient implements ClientModInitializer {
         FloatingLyrics.register();
         DynamicIsland.register();
         FloatWindow.register();
+        NameTagLyrics3D.register();
         ChatPanel.register();
         VisionMediaBridge.start();
         toggleLyrics = KeyMappingHelper.registerKeyMapping(new KeyMapping(

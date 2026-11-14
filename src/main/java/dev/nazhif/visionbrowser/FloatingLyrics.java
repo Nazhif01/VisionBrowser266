@@ -9,18 +9,18 @@ import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 
-/** Minimal, independent floating synced-lyrics HUD. */
+/** Independent VisionBrowser lyrics state, synchronized only with Vision Browser media. */
 final class FloatingLyrics {
-    record Line(double time, String text) { }
+    record Line(double time, double end, String text, List<LyricsEngine.Word> words) { }
+
+    private static volatile LyricsEngine.Track track = new LyricsEngine.Track(List.of(), 0);
     private static volatile List<Line> lines = List.of();
     private static volatile String song = "";
     private static volatile String artist = "";
     private static volatile String message = "Play music in Vision Browser";
     private static volatile boolean enabled = true;
     private static volatile String requestedTrack = "";
-    private static final AtomicLong requestId = new AtomicLong();
 
     private FloatingLyrics() { }
 
@@ -30,66 +30,76 @@ final class FloatingLyrics {
                 FloatingLyrics::render);
     }
 
-    static void toggle() { enabled = !enabled; modeChanged(); }
+    static void toggle() {
+        enabled = !enabled;
+        modeChanged();
+    }
 
-    /** drop whatever the previous lyric style still shows (called when the style is switched) */
     static void modeChanged() {
         Lyrics3D.clear();
         NameTagLyrics3D.clear();
     }
+
     static boolean isEnabled() { return enabled; }
     static boolean hasLyrics() { return !lines.isEmpty(); }
+    static String song() { return song; }
+    static String artist() { return artist; }
+    static String message() { return message; }
 
-    static void loadTrack(String title, String artist, double duration) {
-        String key = title + "|" + artist;
+    static void loadTrack(String title, String artistName, double duration) {
+        String key = (title + "|" + artistName).trim().toLowerCase(java.util.Locale.ROOT);
         if (key.equals(requestedTrack)) return;
         requestedTrack = key;
-        long id = requestId.incrementAndGet();
+        track = new LyricsEngine.Track(List.of(), 0);
         lines = List.of();
         song = title;
-        FloatingLyrics.artist = artist;
+        artist = artistName;
         message = "Loading synchronized lyrics...";
-        VisionMediaBridge.fetchLyrics(title, artist, duration);
+        modeChanged();
+        VisionMediaBridge.fetchLyrics(title, artistName, duration);
     }
 
     static void clear() {
-        requestId.incrementAndGet();
         requestedTrack = "";
+        track = new LyricsEngine.Track(List.of(), 0);
         lines = List.of();
         song = "";
         artist = "";
         message = "Play music in Vision Browser";
+        modeChanged();
     }
 
     static void setUnavailable(String text) {
-        message = text;
+        track = new LyricsEngine.Track(List.of(), 0);
         lines = List.of();
+        message = text;
+        modeChanged();
     }
 
     static void setLyrics(String title, String artistName, String lrc) {
-        List<Line> parsed = new ArrayList<>();
-        for (String raw : lrc.split("\\R")) {
-            java.util.regex.Matcher matcher = java.util.regex.Pattern
-                    .compile("\\[(\\d{1,2}):(\\d{2})(?:\\.(\\d{1,3}))?\\]\\s*(.*)")
-                    .matcher(raw);
-            while (matcher.find()) {
-                double minutes = Double.parseDouble(matcher.group(1));
-                double seconds = Double.parseDouble(matcher.group(2));
-                String fraction = matcher.group(3);
-                double millis = fraction == null ? 0 : Double.parseDouble("0." + fraction);
-                String text = matcher.group(4).trim();
-                if (!text.isEmpty()) parsed.add(new Line(minutes * 60 + seconds + millis, text));
-            }
-        }
-        parsed.sort(java.util.Comparator.comparingDouble(Line::time));
-        if (parsed.isEmpty()) {
+        LyricsEngine.Track parsed = LyricsEngine.parse(lrc);
+        if (parsed.lines().isEmpty()) {
             setUnavailable("No timed lyrics available");
             return;
         }
+        List<Line> converted = new ArrayList<>(parsed.lines().size());
+        for (LyricsEngine.Line line : parsed.lines()) {
+            converted.add(new Line(line.start(), line.end(), line.text(), line.words()));
+        }
         song = title;
         artist = artistName;
-        lines = List.copyOf(parsed);
+        track = parsed;
+        lines = List.copyOf(converted);
         message = "";
+        modeChanged();
+    }
+
+    static int activeLine(double positionSeconds) {
+        return track.lines().isEmpty() ? -1 : track.indexAt(positionSeconds);
+    }
+
+    static int activeWord(int lineIndex, double positionSeconds) {
+        return track.wordAt(lineIndex, positionSeconds);
     }
 
     private static void render(GuiGraphicsExtractor graphics, DeltaTracker tickCounter) {
@@ -99,27 +109,22 @@ final class FloatingLyrics {
         List<Line> current = lines;
         int screenWidth = client.getWindow().getGuiScaledWidth();
         int screenHeight = client.getWindow().getGuiScaledHeight();
-        int centerX = screenWidth / 2;
-        int mode = VisionSettings.lyricsMode;
 
         if (current.isEmpty()) {
             Lyrics3D.clear();
             NameTagLyrics3D.clear();
             if (song.isBlank() && message.startsWith("Play music")) return;
-            // frameless status text (searching / not found), no box
             String label = song.isBlank() ? message : song + "  \u2022  " + message;
-            graphics.text(client.font, label, centerX - client.font.width(label) / 2, (int) (screenHeight * 0.62f), 0xCCD6DAE8, true);
+            graphics.text(client.font, label, screenWidth / 2 - client.font.width(label) / 2,
+                    (int) (screenHeight * 0.62f), 0xCCD6DAE8, true);
             return;
         }
 
         double position = VisionMediaBridge.positionSeconds();
-        int active = -1;
-        for (int i = 0; i < current.size(); i++) {
-            if (current.get(i).time() <= position) active = i;
-            else break;
-        }
+        int active = activeLine(position);
         if (active < 0) active = 0;
         String key = song + "#" + active;
+        int mode = VisionSettings.lyricsMode;
 
         if (mode == VisionSettings.MODE_HUD) {
             Lyrics3D.clear();
@@ -129,15 +134,15 @@ final class FloatingLyrics {
         }
         if (mode == VisionSettings.MODE_TEXT && NameTagLyrics3D.usable()) {
             Lyrics3D.clear();
-            long durationMs = active + 1 < current.size() ? Math.round((current.get(active + 1).time() - current.get(active).time()) * 1000) : 3500;
+            long durationMs = Math.round(Math.max(0.12, current.get(active).end() - current.get(active).time()) * 1000);
             NameTagLyrics3D.update(key, current.get(active).text(), durationMs);
             return;
         }
-        // glow-texture 3D (chosen, or the fallback when the vanilla-text path is unavailable)
+
         NameTagLyrics3D.clear();
         Lyrics3D.show(key, current.get(active).text());
         if (Lyrics3D.render(graphics, client)) return;
-        LyricsHud.render(graphics, client, current, active, position, song);   // last resort: HUD block
+        LyricsHud.render(graphics, client, current, active, position, song);
         graphics.text(client.font, Lyrics3D.status(), 8, screenHeight - 40, 0xFF8899AA, false);
     }
 }

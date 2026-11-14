@@ -30,6 +30,13 @@ final class VisionSettings {
     static volatile int hudLines = 3;                 // 2..6 lines in the HUD panel
     static volatile boolean hudPanel = false;         // dark panel behind the HUD lyrics
 
+    static final String[] LYRIC_COLORS = {"Cyan", "Ice Blue", "Sky", "Blue", "Violet", "Purple", "Magenta", "Pink", "Red", "Coral", "Orange", "Amber", "Yellow", "Lime", "Green", "White"};
+    static final int[] LYRIC_COLOR_RGB = {0x45E8FF, 0xB8F4FF, 0x55BFFF, 0x397BFF, 0x9270FF, 0xB45CFF, 0xF05BFF, 0xFF79B8, 0xFF5268, 0xFF8066, 0xFF9D45, 0xFFC247, 0xFFF06A, 0xB9F45B, 0x54E6A1, 0xFFFFFF};
+
+    static int lyricColorRgb() {
+        return LYRIC_COLOR_RGB[Math.max(0, Math.min(LYRIC_COLOR_RGB.length - 1, lyricsColor))];
+    }
+
     private static final Path FILE = Path.of("config", "visionbrowser.json");
 
     private VisionSettings() { }

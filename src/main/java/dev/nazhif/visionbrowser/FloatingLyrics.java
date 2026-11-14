@@ -94,6 +94,29 @@ final class FloatingLyrics {
         modeChanged();
     }
 
+    private static String progressiveGlowText(Line line, double position) {
+        List<LyricsEngine.Word> words = line.words();
+        if (words.isEmpty()) return line.text();
+        StringBuilder visible = new StringBuilder();
+        if (words.size() == 1 && words.get(0).text().trim().contains(" ")) {
+            // Plain LRC has no word timestamps. Reveal its words evenly across the line duration.
+            String[] parts = words.get(0).text().trim().split("\\s+");
+            double duration = Math.max(0.8, line.end() - line.time());
+            int count = Math.min(parts.length, Math.max(0,
+                    (int) Math.floor((position - line.time()) / Math.max(0.12, duration / parts.length)) + 1));
+            for (int i = 0; i < count; i++) {
+                if (!visible.isEmpty()) visible.append(' ');
+                visible.append(parts[i]);
+            }
+        } else {
+            for (LyricsEngine.Word word : words) {
+                if (position < word.start()) break;
+                visible.append(word.text());
+            }
+        }
+        return visible.toString().trim();
+    }
+
     static int activeLine(double positionSeconds) {
         return track.lines().isEmpty() ? -1 : track.indexAt(positionSeconds);
     }
@@ -139,7 +162,7 @@ final class FloatingLyrics {
         }
 
         NameTagLyrics3D.clear();
-        Lyrics3D.show(key, current.get(active).text());
+        Lyrics3D.show(key, progressiveGlowText(current.get(active), position));
         if (Lyrics3D.render(graphics, client)) return;
         LyricsHud.render(graphics, client, current, active, position, song);
         graphics.text(client.font, Lyrics3D.status(), 8, screenHeight - 40, 0xFF8899AA, false);

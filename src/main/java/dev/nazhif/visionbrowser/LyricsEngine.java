@@ -129,26 +129,16 @@ final class LyricsEngine {
 
     static String displayWord(List<Word> words, int index) {
         if (index < 0 || index >= words.size()) return "";
-        String current = words.get(index).text().trim();
-        if (current.isEmpty() || index + 1 >= words.size()) return current;
-        String next = words.get(index + 1).text().trim();
-        if (needsSeparator(current, next)) return current + " ";
-        return current;
+        // Keep the provider's original chunk boundaries. Word-level LiriQo data
+        // already carries explicit spaces; syllable/character timing must not
+        // receive synthetic spaces between chunks.
+        return words.get(index).text();
     }
 
     static String joinWords(List<Word> words) {
         StringBuilder joined = new StringBuilder();
-        for (int i = 0; i < words.size(); i++) joined.append(displayWord(words, i));
+        for (Word word : words) joined.append(word.text());
         return joined.toString().trim();
-    }
-
-    private static boolean needsSeparator(String previous, String current) {
-        if (previous.isEmpty() || current.isEmpty()) return false;
-        char first = current.charAt(0);
-        char last = previous.charAt(previous.length() - 1);
-        if (".,!?;:%)]}»”’".indexOf(first) >= 0) return false;
-        if ("([{«“‘".indexOf(last) >= 0) return false;
-        return true;
     }
 
     static boolean hasWordTiming(String source) {

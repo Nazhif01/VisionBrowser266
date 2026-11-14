@@ -21,7 +21,7 @@ import java.util.List;
 /**
  * Independent world-space word renderer for VisionBrowser.
  * Each lyric word is a separate vanilla name-tag submit positioned in the scene.
- * Enhanced LRC timestamps are used when available; plain LRC gets a proportional timing estimate.
+ * Enhanced LRC uses its exact word timestamps; standard LRC displays the whole line at its line timestamp.
  */
 final class NameTagLyrics3D {
     private static final int FULL_BRIGHT = 15728880;
@@ -217,33 +217,21 @@ final class NameTagLyrics3D {
             List<Double> ends = new ArrayList<>();
             List<LyricsEngine.Word> sourceWords = line.words();
             if (sourceWords.size() > 1) {
+                // Enhanced LRC: each chunk already carries an authoritative timestamp.
+                // Keep the chunk intact; never distribute its duration by character count.
                 for (LyricsEngine.Word source : sourceWords) {
-                    String[] parts = source.text().trim().split("\\s+");
-                    int chars = 0;
-                    for (String part : parts) chars += part.length();
-                    double cursor = source.start();
-                    for (String part : parts) {
-                        double span = Math.max(0.06, source.end() - source.start());
-                        double partSpan = span * part.length() / Math.max(1.0, chars);
-                        tokens.add(part);
-                        starts.add(cursor);
-                        cursor += partSpan;
-                        ends.add(cursor);
-                    }
+                    String part = source.text().trim();
+                    if (part.isEmpty()) continue;
+                    tokens.add(part);
+                    starts.add(source.start());
+                    ends.add(Math.max(source.start() + 0.05, source.end()));
                 }
             } else {
-                String[] parts = line.text().trim().split("\\s+");
-                int chars = 0;
-                for (String part : parts) chars += part.length();
-                double cursor = line.time();
-                double span = Math.max(0.25, line.end() - line.time());
-                for (String part : parts) {
-                    double partSpan = span * part.length() / Math.max(1.0, chars);
-                    tokens.add(part);
-                    starts.add(cursor);
-                    cursor += partSpan;
-                    ends.add(cursor);
-                }
+                // Standard LRC: only the complete line timestamp is known.
+                // Render the complete sentence together instead of guessing individual word times.
+                tokens.add(line.text().trim());
+                starts.add(line.time());
+                ends.add(line.end());
             }
 
             List<Word> positioned = new ArrayList<>();

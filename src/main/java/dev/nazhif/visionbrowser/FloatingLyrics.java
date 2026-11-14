@@ -54,7 +54,7 @@ final class FloatingLyrics {
         lines = List.of();
         song = title;
         artist = artistName;
-        message = "Loading synchronized lyrics...";
+        // Fetch in the background without showing a blocking loading banner.\n        message = "";
         modeChanged();
         VisionMediaBridge.fetchLyrics(title, artistName, duration);
     }

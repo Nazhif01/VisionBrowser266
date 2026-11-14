@@ -23,6 +23,8 @@ final class VisionSettings {
     static volatile int lyricsAnimation = 0;          // 0 Edit, 1 Karaoke pulse, 2 Typewriter reveal, 3 Wave
     static volatile int lyricsIntensity = 1;          // 0 Chill, 1 Normal, 2 Hype
     static volatile boolean lyricsRainbow = false;    // animated spectrum tint
+    static volatile int glowFacing = 1;              // 0 = fixed world plane, 1 = always face camera (billboard)
+    static volatile int glowPlacement = 0;           // 0 = near crosshair, 1 = random within the forward view
     static volatile int hudPosition = 0;              // 0 above crosshair, 1 centre, 2 top, 3 bottom, 4 top-left, 5 top-right
     static volatile int hudLines = 3;                 // 2..6 lines in the HUD panel
     static volatile boolean hudPanel = false;         // dark panel behind the HUD lyrics
@@ -50,6 +52,8 @@ final class VisionSettings {
             if (o.has("lyricsAnimation")) lyricsAnimation = Math.max(0, Math.min(3, o.get("lyricsAnimation").getAsInt()));
             if (o.has("lyricsIntensity")) lyricsIntensity = Math.max(0, Math.min(2, o.get("lyricsIntensity").getAsInt()));
             if (o.has("lyricsRainbow")) lyricsRainbow = o.get("lyricsRainbow").getAsBoolean();
+            if (o.has("glowFacing")) glowFacing = Math.max(0, Math.min(1, o.get("glowFacing").getAsInt()));
+            if (o.has("glowPlacement")) glowPlacement = Math.max(0, Math.min(1, o.get("glowPlacement").getAsInt()));
             if (o.has("hudPosition")) hudPosition = Math.max(0, Math.min(5, o.get("hudPosition").getAsInt()));
             if (o.has("hudLines")) hudLines = Math.max(2, Math.min(6, o.get("hudLines").getAsInt()));
             if (o.has("hudPanel")) hudPanel = o.get("hudPanel").getAsBoolean();
@@ -74,6 +78,8 @@ final class VisionSettings {
             o.addProperty("lyricsAnimation", lyricsAnimation);
             o.addProperty("lyricsIntensity", lyricsIntensity);
             o.addProperty("lyricsRainbow", lyricsRainbow);
+            o.addProperty("glowFacing", glowFacing);
+            o.addProperty("glowPlacement", glowPlacement);
             o.addProperty("hudPosition", hudPosition);
             o.addProperty("hudLines", hudLines);
             o.addProperty("hudPanel", hudPanel);

@@ -9,6 +9,7 @@ import java.util.List;
 
 /** Animated karaoke-style HUD renderer for the independent VisionBrowser lyrics engine. */
 final class LyricsHud {
+    static final String[] POSITIONS = {"Above crosshair", "Center", "Top", "Bottom", "Top left", "Top right"};
     private static final int PANEL_W = 340;
     private static final int PANEL_H = 94;
     private static final int PAD = 14;

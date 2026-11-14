@@ -274,7 +274,18 @@ final class Lyrics3D {
                 boolean billboard = VisionSettings.glowFacing == 1;
                 if (!billboard && (cp.x - cx) * l.nx + (cp.z - cz) * l.nz <= 0) continue; // fixed world plane: do not show its back
                 double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
-                alpha *= (float) Math.max(0, Math.min(1, (dist - 0.8) / 1.5)) * (float) Math.max(0, Math.min(1, (64 - dist) / 24));
+                // Do not fade lyrics when the player approaches. In billboard mode keep a small
+                // minimum camera distance so the text cannot pass through the near clipping plane.
+                if (billboard && dist < 1.25) {
+                    double yawToLook = Math.toRadians(cam.yRot()), pitchToLook = Math.toRadians(cam.xRot());
+                    double lookX = -Math.sin(yawToLook) * Math.cos(pitchToLook);
+                    double lookY = -Math.sin(pitchToLook);
+                    double lookZ = Math.cos(yawToLook) * Math.cos(pitchToLook);
+                    cx = cp.x + lookX * 1.25;
+                    cy = cp.y + lookY * 1.25;
+                    cz = cp.z + lookZ * 1.25;
+                }
+                alpha *= (float) Math.max(0, Math.min(1, (64 - dist) / 24));
                 int a255 = Math.round(alpha * 255f);
                 if (a255 < 4) continue;
 

@@ -120,7 +120,13 @@ final class ChatPanel {
                         y += 24;
                     }
                     case VisionSettings.MODE_GLOW -> {
+                        y = cycle(r, Id.ANIM_PREV, Id.ANIM_NEXT, x, y, inner);
+                        y = cycle(r, Id.POWER_PREV, Id.POWER_NEXT, x, y, inner);
                         y = cycle(r, Id.FONT_PREV, Id.FONT_NEXT, x, y, inner);
+                        int halfGlow = (inner - 6) / 2;
+                        r.add(new Item(Id.COLOR_TOGGLE, x, y, halfGlow, 18));
+                        r.add(new Item(Id.RAINBOW_TOGGLE, x + halfGlow + 6, y, halfGlow, 18));
+                        y += 24;
                         y = slider(r, Id.L_SIZE, x, y, inner);
                         y = slider(r, Id.L_SIDE, x, y, inner);
                     }
@@ -211,12 +217,18 @@ final class ChatPanel {
                 case MODE_NEXT -> cycleMode(1);
                 case FONT_PREV -> cycleFont(-1);
                 case FONT_NEXT -> cycleFont(1);
+                case ANIM_PREV -> cycleAnimation(-1);
+                case ANIM_NEXT -> cycleAnimation(1);
+                case POWER_PREV -> cycleIntensity(-1);
+                case POWER_NEXT -> cycleIntensity(1);
+                case RAINBOW_TOGGLE -> { VisionSettings.lyricsRainbow = !VisionSettings.lyricsRainbow; VisionSettings.save(); }
                 case POS_PREV -> { VisionSettings.hudPosition = Math.floorMod(VisionSettings.hudPosition - 1, LyricsHud.POSITIONS.length); VisionSettings.save(); }
                 case POS_NEXT -> { VisionSettings.hudPosition = Math.floorMod(VisionSettings.hudPosition + 1, LyricsHud.POSITIONS.length); VisionSettings.save(); }
                 case LINES_PREV -> { VisionSettings.hudLines = Math.max(2, VisionSettings.hudLines - 1); VisionSettings.save(); }
                 case LINES_NEXT -> { VisionSettings.hudLines = Math.min(6, VisionSettings.hudLines + 1); VisionSettings.save(); }
                 case PANEL_TOGGLE -> { VisionSettings.hudPanel = !VisionSettings.hudPanel; VisionSettings.save(); }
                 case COLOR_TOGGLE -> { VisionSettings.lyricsAlbumColor = !VisionSettings.lyricsAlbumColor; VisionSettings.save(); FloatingLyrics.modeChanged(); }
+                case RAINBOW_TOGGLE -> { VisionSettings.lyricsRainbow = !VisionSettings.lyricsRainbow; VisionSettings.save(); }
                 case FLOAT_SIZE, ISLAND_SIZE, L_SIZE, L_DIST, L_SPREAD, L_SIDE -> {
                     dragging = r.id();
                     dragItem = r;
@@ -285,6 +297,7 @@ final class ChatPanel {
                 case FLOAT_LOCK -> button(g, font, r, FloatWindow.isLocked() ? "Locked" : "Free", hot, FloatWindow.isLocked(), accent);
                 case LYR_TOGGLE -> button(g, font, r, FloatingLyrics.isEnabled() ? "Lyrics: On" : "Lyrics: Off", hot, FloatingLyrics.isEnabled(), accent);
                 case COLOR_TOGGLE -> button(g, font, r, VisionSettings.lyricsAlbumColor ? "Color: Album" : "Color: White", hot, VisionSettings.lyricsAlbumColor, accent);
+                case RAINBOW_TOGGLE -> button(g, font, r, VisionSettings.lyricsRainbow ? "Rainbow: On" : "Rainbow: Off", hot, VisionSettings.lyricsRainbow, accent);
                 case RAINBOW_TOGGLE -> button(g, font, r, VisionSettings.lyricsRainbow ? "Rainbow: On" : "Rainbow: Off", hot, VisionSettings.lyricsRainbow, accent);
                 case PANEL_TOGGLE -> button(g, font, r, VisionSettings.hudPanel ? "Panel: On" : "Panel: Off", hot, VisionSettings.hudPanel, accent);
                 case MODE_PREV, FONT_PREV, POS_PREV, LINES_PREV, ANIM_PREV, POWER_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }

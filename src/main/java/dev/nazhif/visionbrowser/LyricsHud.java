@@ -7,86 +7,112 @@ import org.joml.Matrix3x2fStack;
 
 import java.util.List;
 
-/**
- * Lyrics as a HUD block: the active line highlighted, the next lines dimmer, with a short slide/fade when the line changes and a
- * countdown during long instrumental gaps. Layout ideas follow LyricsPlus by FRK (MIT licence); this is an independent implementation.
- * Positions: 0 above crosshair, 1 centre, 2 top, 3 bottom, 4 top-left, 5 top-right.
- */
+/** Animated karaoke-style HUD renderer for the independent VisionBrowser lyrics engine. */
 final class LyricsHud {
     static final String[] POSITIONS = {"Above crosshair", "Center", "Top", "Bottom", "Top left", "Top right"};
-    private static final int PANEL_W = 250, LINE_H = 13, PAD = 4, MARGIN = 10;
-
+    private static final int PANEL_W = 340;
+    private static final int PANEL_H = 94;
+    private static final int PAD = 14;
     private static String lastKey = "";
     private static long changedAt;
 
     private LyricsHud() { }
 
-    static void render(GuiGraphicsExtractor g, Minecraft mc, List<FloatingLyrics.Line> lines, int active, double positionSeconds, String songKey) {
+    static void render(GuiGraphicsExtractor g, Minecraft mc, List<FloatingLyrics.Line> lines,
+                       int active, double positionSeconds, String songKey) {
+        if (lines.isEmpty() || active < 0 || active >= lines.size()) return;
         Font font = mc.font;
-        int sw = mc.getWindow().getGuiScaledWidth(), sh = mc.getWindow().getGuiScaledHeight();
+        int sw = mc.getWindow().getGuiScaledWidth();
+        int sh = mc.getWindow().getGuiScaledHeight();
         long now = System.currentTimeMillis();
-        FloatingLyrics.Line cur = lines.get(active);
-        FloatingLyrics.Line next = active + 1 < lines.size() ? lines.get(active + 1) : null;
 
         String key = songKey + "#" + active;
-        if (!key.equals(lastKey)) { lastKey = key; changedAt = now; }
-        float t = Math.min(1f, (now - changedAt) / 200f);              // 200 ms line-change transition
-        float ease = 1f - (1f - t) * (1f - t);
-
-        // active text, or an instrumental countdown when the singer is silent for a while
-        String activeText = cur.text();
-        double sinceCur = positionSeconds - cur.time();
-        if (next != null && sinceCur > 6 && next.time() - positionSeconds > 3) {
-            activeText = "\u266b " + Math.max(1, (long) (next.time() - positionSeconds));
+        if (!key.equals(lastKey)) {
+            lastKey = key;
+            changedAt = now;
         }
+        float transition = Math.min(1f, (now - changedAt) / 260f);
+        float eased = 1f - (1f - transition) * (1f - transition);
+        int x = (sw - PANEL_W) / 2;
+        int y = Math.max(28, Math.min(sh - PANEL_H - 42, (int) (sh * 0.66f) - PANEL_H / 2));
+        int accent = VisionSettings.lyricColorRgb();
 
-        int n = VisionSettings.hudLines;
-        float scale = VisionSettings.lyricsScale;
-        int shownLines = 1;
-        for (int i = 1; i < n && active + i < lines.size(); i++) shownLines++;
-        int panelH = shownLines * LINE_H + PAD * 2;
-        int w = Math.round(PANEL_W * scale), h = Math.round(panelH * scale);
-        int x, y;
-        switch (VisionSettings.hudPosition) {
-            case 1 -> { x = (sw - w) / 2; y = (sh - h) / 2; }
-            case 2 -> { x = (sw - w) / 2; y = MARGIN; }
-            case 3 -> { x = (sw - w) / 2; y = sh - h - 72; }
-            case 4 -> { x = MARGIN; y = MARGIN + 40; }
-            case 5 -> { x = sw - w - MARGIN; y = MARGIN + 40; }
-            default -> { x = (sw - w) / 2; y = sh / 2 - 56 - h; }
-        }
-
-        int accent = IslandArt.accent() & 0xFFFFFF;
-        int activeRgb = VisionSettings.lyricsAlbumColor ? brighten(accent) : 0xFFFFFF;
         Matrix3x2fStack pose = g.pose();
         pose.pushMatrix();
         try {
-            pose.translate((float) x, (float) y);
-            pose.scale(scale, scale);
-            if (VisionSettings.hudPanel) DynamicIsland.roundedRect(g, 0, 0, PANEL_W, panelH, 8, 0x8C101018);
-            int slide = Math.round((1f - ease) * 4f);
-            for (int i = 0; i < shownLines; i++) {
-                String raw = i == 0 ? activeText : lines.get(active + i).text();
-                if (raw.isBlank()) raw = "\u266b";
-                boolean isActive = i == 0;
-                int alpha = isActive ? Math.round(80 + 175 * ease) : Math.round((200 - i * 38) * (0.55f + 0.45f * ease));
-                alpha = Math.max(40, Math.min(255, alpha));
-                String text = DynamicIsland.ellipsize(font, raw, PANEL_W - 12);
-                if (isActive) text = "\u00a7l" + text;
-                int color = (alpha << 24) | (isActive ? activeRgb : 0xD6DAE8);
-                int tx = (PANEL_W - font.width(text)) / 2;
-                int ty = PAD + i * LINE_H + (isActive ? 0 : slide - 0);
-                g.text(font, text, tx, ty, color, true);
+            pose.translate(x, y + Math.round((1f - eased) * 7f));
+            DynamicIsland.roundedRect(g, 0, 0, PANEL_W, PANEL_H, 13, 0xA90A0C14);
+            DynamicIsland.roundedRect(g, 1, 1, PANEL_W - 2, 1, 1, 0x24FFFFFF);
+
+            String title = FloatingLyrics.song();
+            String artist = FloatingLyrics.artist();
+            String heading = artist.isBlank() ? title : title + "  •  " + artist;
+            g.text(font, DynamicIsland.ellipsize(font, heading, PANEL_W - PAD * 2),
+                    PAD, 9, 0xC8DCE3F4, false);
+            g.text(font, "LYRICS  /  LIVE SYNC", PANEL_W - PAD - font.width("LYRICS  /  LIVE SYNC"),
+                    9, 0x807F91AA, false);
+
+            FloatingLyrics.Line current = lines.get(active);
+            int activeWord = FloatingLyrics.activeWord(active, positionSeconds);
+            drawKaraokeLine(g, font, current, activeWord, 28, PANEL_W - PAD * 2, 1.22f, accent, 0xFFFFFFFF);
+
+            int nextY = 59;
+            for (int row = 1; row <= 2 && active + row < lines.size(); row++) {
+                FloatingLyrics.Line upcoming = lines.get(active + row);
+                String text = DynamicIsland.ellipsize(font, upcoming.text(), PANEL_W - PAD * 2);
+                int alpha = row == 1 ? 0xB7 : 0x78;
+                g.text(font, text, PAD, nextY + (row - 1) * 13, (alpha << 24) | 0xC7D0E0, false);
             }
+
+            double duration = Math.max(0.08, current.end() - current.time());
+            float progress = (float) Math.max(0, Math.min(1, (positionSeconds - current.time()) / duration));
+            DynamicIsland.roundedRect(g, PAD, PANEL_H - 8, PANEL_W - PAD * 2, 2, 1, 0x35FFFFFF);
+            DynamicIsland.roundedRect(g, PAD, PANEL_H - 8,
+                    Math.max(2, Math.round((PANEL_W - PAD * 2) * progress)), 2, 1, 0xE0FFFFFF);
         } finally {
             pose.popMatrix();
         }
     }
 
-    private static int brighten(int rgb) {
-        int r = (rgb >> 16) & 255, g = (rgb >> 8) & 255, b = rgb & 255;
-        int peak = Math.max(r, Math.max(g, b));
-        if (peak < 190 && peak > 0) { float k = 190f / peak; r = Math.min(255, Math.round(r * k)); g = Math.min(255, Math.round(g * k)); b = Math.min(255, Math.round(b * k)); }
-        return (r << 16) | (g << 8) | b;
+    private static void drawKaraokeLine(GuiGraphicsExtractor g, Font font, FloatingLyrics.Line line,
+                                         int activeWord, int y, int maxWidth, float scale,
+                                         int accent, int fallbackColor) {
+        List<LyricsEngine.Word> words = line.words();
+        if (words.isEmpty()) {
+            String text = DynamicIsland.ellipsize(font, line.text(), maxWidth);
+            g.text(font, text, (PANEL_W - font.width(text)) / 2, y, fallbackColor, true);
+            return;
+        }
+
+        int totalWidth = 0;
+        for (int i = 0; i < words.size(); i++) totalWidth += font.width(LyricsEngine.displayWord(words, i));
+        float fit = totalWidth <= 0 ? 1f : Math.min(1f, maxWidth / (float) totalWidth);
+        float finalScale = scale * fit;
+        Matrix3x2fStack pose = g.pose();
+        pose.pushMatrix();
+        try {
+            int renderedWidth = Math.round(totalWidth * finalScale);
+            pose.translate((PANEL_W - renderedWidth) / 2f, y);
+            pose.scale(finalScale, 1f);
+            int cursor = 0;
+            for (int i = 0; i < words.size(); i++) {
+                LyricsEngine.Word word = words.get(i);
+                String displayText = LyricsEngine.displayWord(words, i);
+                int color;
+                if (activeWord < 0) color = 0xFFB7C0D0;
+                else if (i < activeWord) color = 0xFF000000 | accent;
+                else if (i == activeWord) color = 0xFFFFFFFF;
+                else color = 0xFF858D9E;
+                if (i == activeWord) {
+                    String value = "\\u00a7l" + displayText;
+                    g.text(font, value, cursor, 0, color, true);
+                } else {
+                    g.text(font, displayText, cursor, 0, color, i < activeWord);
+                }
+                cursor += font.width(displayText);
+            }
+        } finally {
+            pose.popMatrix();
+        }
     }
 }

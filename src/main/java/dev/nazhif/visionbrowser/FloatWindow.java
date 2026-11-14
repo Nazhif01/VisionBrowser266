@@ -31,7 +31,7 @@ final class FloatWindow {
 
     private static boolean enabled, locked = true, screenOpen;
     private static final float distance = 3.0f;
-    private static double cx, cy, cz, rx = 1, rz = 0, nx = 0, nz = 1;
+    private static double cx, cy, cz, rx = 1, ry, rz, ux, uy = 1, uz, nx = 0, nz = 1;
     private static boolean poseInit, faceInit;
     private static long enabledAt, lastNanos, toastUntil;
     private static String toast = "";
@@ -150,8 +150,23 @@ final class FloatWindow {
                 cx += (tx - cx) * k; cy += (ty - cy) * k; cz += (tz - cz) * k;
             }
             if (locked || !faceInit) {
-                double dx = cp.x - cx, dz = cp.z - cz, len = Math.hypot(dx, dz);
-                if (len > 0.3) { nx = dx / len; nz = dz / len; rx = nz; rz = -nx; faceInit = true; }
+                // Keep the whole browser plane aligned with the camera, including pitch.
+                // A yaw-only basis makes the window collapse when looking steeply up/down.
+                double dx = cp.x - cx, dy = cp.y - cy, dz = cp.z - cz;
+                double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (len > 0.3) {
+                    double yawRad = Math.toRadians(cam.yRot());
+                    double pitchRad = Math.toRadians(cam.xRot());
+                    nx = dx / len;
+                    nz = dz / len;
+                    rx = -Math.cos(yawRad);
+                    ry = 0;
+                    rz = -Math.sin(yawRad);
+                    ux = -Math.sin(yawRad) * Math.sin(pitchRad);
+                    uy = Math.cos(pitchRad);
+                    uz = Math.cos(yawRad) * Math.sin(pitchRad);
+                    faceInit = true;
+                }
             }
             if ((cp.x - cx) * nx + (cp.z - cz) * nz <= 0) return; // seen from behind
 
@@ -200,7 +215,9 @@ final class FloatWindow {
         float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}};   // TL, TR, BR, BL
         float[] sx = new float[4], sy = new float[4], sw = new float[4];
         for (int i = 0; i < 4; i++) {
-            double wx = qx + rx * corner[i][0], wy = qy + corner[i][1], wz = qz + rz * corner[i][0];
+            double wx = qx + rx * corner[i][0] + ux * corner[i][1];
+            double wy = qy + ry * corner[i][0] + uy * corner[i][1];
+            double wz = qz + rz * corner[i][0] + uz * corner[i][1];
             float[] n = ndc(c.vp(), wx - c.cp().x, wy - c.cp().y, wz - c.cp().z);
             if (n[2] < 0.1f) return;
             sx[i] = (n[0] * c.signX() * 0.5f + 0.5f) * c.gw();

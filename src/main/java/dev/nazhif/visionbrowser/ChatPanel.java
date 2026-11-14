@@ -228,7 +228,6 @@ final class ChatPanel {
                 case LINES_NEXT -> { VisionSettings.hudLines = Math.min(6, VisionSettings.hudLines + 1); VisionSettings.save(); }
                 case PANEL_TOGGLE -> { VisionSettings.hudPanel = !VisionSettings.hudPanel; VisionSettings.save(); }
                 case COLOR_TOGGLE -> { VisionSettings.lyricsAlbumColor = !VisionSettings.lyricsAlbumColor; VisionSettings.save(); FloatingLyrics.modeChanged(); }
-                case RAINBOW_TOGGLE -> { VisionSettings.lyricsRainbow = !VisionSettings.lyricsRainbow; VisionSettings.save(); }
                 case FLOAT_SIZE, ISLAND_SIZE, L_SIZE, L_DIST, L_SPREAD, L_SIDE -> {
                     dragging = r.id();
                     dragItem = r;

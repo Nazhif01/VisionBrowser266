@@ -28,7 +28,7 @@ import java.util.List;
  */
 final class Lyrics3D {
     private static final float BLOCKS_PER_PX = 0.012f;
-    private static final float DISTANCE = 7.0f;
+    private static final float MIN_DISTANCE = 3.0f;
     private static final long LIFE_MS = 7500, FADE_IN_MS = 400, FADE_OUT_MS = 1500;
     private static final int MAX_LINES = 3, FONT_SIZE = 48, PAD = 28, MAX_TEX_W = 1100;
 
@@ -48,6 +48,7 @@ final class Lyrics3D {
         volatile Identifier texture;
         volatile int texW, texH;
         volatile boolean released, failed;
+        volatile int textureGeneration;
 
         Line(String text, double cx, double cy, double cz, double rx, double rz, double nx, double nz) {
             this.text = text; this.cx = cx; this.cy = cy; this.cz = cz;
@@ -117,8 +118,8 @@ final class Lyrics3D {
                 double angle = Math.toRadians(VisionSettings.lyricsSide * 24.0);
                 Vec3 direction = forward.scale(Math.cos(angle)).add(right.scale(Math.sin(angle))).normalize();
                 line = new Line(text,
-                        cp.x + direction.x * DISTANCE, cp.y + direction.y * DISTANCE + 0.6,
-                        cp.z + direction.z * DISTANCE,
+                        cp.x + direction.x * VisionSettings.lyricsDistance, cp.y + direction.y * VisionSettings.lyricsDistance + 0.6,
+                        cp.z + direction.z * VisionSettings.lyricsDistance,
                         rxs, rzs, -direction.x, -direction.z);
             }
             // Never stack old and new lyric sentences on top of each other.
@@ -136,7 +137,8 @@ final class Lyrics3D {
         // Random positions stay inside a 84-degree forward cone, never behind the player.
         ThreadLocalRandom random = ThreadLocalRandom.current();
         double angle = Math.toRadians(random.nextDouble(-42.0, 42.0));
-        double distance = random.nextDouble(5.5, 9.5);
+        double configured = VisionSettings.clamp(VisionSettings.lyricsDistance, MIN_DISTANCE, 34f);
+        double distance = VisionSettings.clamp(configured + random.nextDouble(-0.8, 0.8), MIN_DISTANCE, 34f);
         double vertical = random.nextDouble(-0.15, 1.65);
         Vec3 direction = forward.scale(Math.cos(angle)).add(right.scale(Math.sin(angle))).normalize();
         return new Line(text,
@@ -163,13 +165,14 @@ final class Lyrics3D {
     // ------------------------------------------------------------------ text -> glowing texture
 
     private static void rasterize(Line line) {
-        final int accent = IslandArt.accent();
+        final int accent = VisionSettings.lyricColorRgb();
+        final int generation = ++line.textureGeneration;
         final String family = VisionSettings.lyricsFont;
         final boolean glow = VisionSettings.lyricsGlow;
         Thread worker = new Thread(() -> {
             try {
                 Rendered r = renderText(line.text, accent, family, glow);
-                Minecraft.getInstance().execute(() -> install(line, r));
+                Minecraft.getInstance().execute(() -> install(line, r, generation));
             } catch (Throwable error) {
                 line.failed = true;
                 status = "3D lyrics: text render failed (" + error.getClass().getSimpleName() + ")";
@@ -179,8 +182,8 @@ final class Lyrics3D {
         worker.start();
     }
 
-    private static void install(Line line, Rendered r) {
-        if (line.released) {
+    private static void install(Line line, Rendered r, int generation) {
+        if (line.released || generation != line.textureGeneration) {
             r.image().close();
             return;
         }
@@ -329,13 +332,18 @@ final class Lyrics3D {
                 float ageSeconds = age / 1000f;
                 float wordAgeSeconds = wordAge / 1000f;
                 float impact = (float) Math.exp(-wordAge / (240f / intensity));
-                float pulse = animation == 1 ? 1f + (float) Math.sin(wordAgeSeconds * 7.5f) * 0.045f * intensity : 1f;
-                float entrance = animation == 2 ? Math.min(1f, wordAge / (420f / intensity)) : 1f;
+                float pulse = animation == 1 ? 1f + (float) Math.sin(wordAgeSeconds * 8.5f) * 0.09f * intensity
+                        : animation == 7 ? 0.94f + 0.12f * (0.5f + 0.5f * (float) Math.sin(wordAgeSeconds * 3.2f)) : 1f;
+                float entrance = animation == 2 ? Math.min(1f, wordAge / (620f / intensity)) : 1f;
+                if (animation == 4) pulse *= 1f + (float) Math.abs(Math.sin(wordAgeSeconds * 10f)) * impact * 0.16f * intensity;
                 float alpha = Math.min(1f, age / (float) FADE_IN_MS) * Math.max(0f, Math.min(1f, (LIFE_MS - age) / (float) FADE_OUT_MS));
                 alpha *= Math.max(0.3f, 1f - 0.35f * l.liftTarget) * entrance;
                 if (animation == 0) alpha *= 0.88f + 0.12f * Math.min(1f, wordAge / 220f);
-                double wave = animation == 3 ? Math.sin(ageSeconds * 3.8f) * 0.16f * intensity : 0.0;
-                double impactOffset = animation == 0 ? Math.sin(ageSeconds * 24f) * impact * 0.045f * intensity : 0.0;
+                double wave = animation == 3 ? Math.sin(ageSeconds * 4.8f) * 0.22f * intensity
+                        : animation == 4 ? Math.abs(Math.sin(wordAgeSeconds * 8f)) * impact * 0.42f * intensity
+                        : animation == 6 ? Math.sin(wordAgeSeconds * 5f) * 0.24f * impact * intensity : 0.0;
+                double glitch = animation == 5 ? Math.sin(wordAgeSeconds * 55f) * impact * 0.12f * intensity : 0.0;
+                double impactOffset = (animation == 0 ? Math.sin(ageSeconds * 24f) * impact * 0.045f * intensity : 0.0) + glitch;
                 double cx = l.cx + impactOffset, cy = l.cy + l.lift + wave, cz = l.cz;
                 boolean billboard = VisionSettings.glowFacing == 1;
                 if (l.followsPlayer) {
@@ -374,14 +382,20 @@ final class Lyrics3D {
                 int a255 = Math.round(alpha * 255f);
                 if (a255 < 4) continue;
 
-                float editScale = animation == 0 ? 1f + impact * 0.22f * intensity
-                        : 1f + impact * 0.10f * intensity;
+                float editScale = switch (animation) {
+                    case 0 -> 1f + impact * 0.24f * intensity;
+                    case 4 -> 0.94f + Math.abs((float) Math.sin(wordAgeSeconds * 8f)) * 0.18f * intensity;
+                    case 5 -> 1f + (float) Math.sin(wordAgeSeconds * 48f) * impact * 0.08f * intensity;
+                    case 6 -> 1f + impact * 0.20f * intensity;
+                    default -> 1f + impact * 0.16f * intensity;
+                };
                 float hw = l.texW * BLOCKS_PER_PX * l.scale * pulse * editScale / 2f;
                 float hh = l.texH * BLOCKS_PER_PX * l.scale * pulse * editScale / 2f;
                 double facingYaw = billboard ? Math.atan2(cp.x - cx, cz - cp.z) : yaw;
                 float planeRightX = billboard ? (float) -Math.cos(facingYaw) : (float) l.rx;
                 float planeRightZ = billboard ? (float) -Math.sin(facingYaw) : (float) l.rz;
-                float rotation = (float) Math.sin(wordAgeSeconds * 18f) * impact * 0.045f * intensity;
+                float rotation = (float) Math.sin(wordAgeSeconds * (animation == 5 ? 62f : animation == 6 ? 5f : 18f))
+                        * impact * (animation == 5 ? 0.12f : animation == 6 ? 0.18f : 0.075f) * intensity;
                 float cs = (float) Math.cos(rotation), sn = (float) Math.sin(rotation);
                 float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}}; // TL, TR, BR, BL
                 float[] sx = new float[4], sy = new float[4], sw = new float[4];
@@ -426,7 +440,7 @@ final class Lyrics3D {
 
                     int tint = VisionSettings.lyricsRainbow
                             ? (java.awt.Color.HSBtoRGB((now % 5200L) / 5200f, 0.82f, 1f) & 0xFFFFFF)
-                            : (VisionSettings.lyricsAlbumColor ? IslandArt.accent() & 0xFFFFFF : 0xFFFFFF);
+                            : VisionSettings.lyricColorRgb();
                     if (VisionSettings.lyricsGlow && intensity > 0.8f) {
                         float shift = 1.1f * intensity;
                         float[] redX = sx.clone(), blueX = sx.clone();

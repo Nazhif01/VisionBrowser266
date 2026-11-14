@@ -22,7 +22,7 @@ final class ChatPanel {
         NONE, TAB_WINDOW, TAB_ISLAND, TAB_LYRICS,
         FLOAT_TOGGLE, FLOAT_LOCK, FLOAT_SIZE, ISLAND_SIZE,
         LYR_TOGGLE, MODE_PREV, MODE_NEXT, L_DIST, L_SIZE, L_SPREAD, L_SIDE, COLOR_TOGGLE,
-        FONT_PREV, FONT_NEXT, POS_PREV, POS_NEXT, LINES_PREV, LINES_NEXT, PANEL_TOGGLE, ANIM_PREV, ANIM_NEXT, POWER_PREV, POWER_NEXT, RAINBOW_TOGGLE, GLOW_FACING_PREV, GLOW_FACING_NEXT, GLOW_PLACE_PREV, GLOW_PLACE_NEXT
+        FONT_PREV, FONT_NEXT, POS_PREV, POS_NEXT, LINES_PREV, LINES_NEXT, PANEL_TOGGLE, ANIM_PREV, ANIM_NEXT, POWER_PREV, POWER_NEXT, RAINBOW_TOGGLE, GLOW_FACING_PREV, GLOW_FACING_NEXT, GLOW_PLACE_PREV, GLOW_PLACE_NEXT, GLOW_TOGGLE
     }
 
     private record Item(Id id, int x, int y, int w, int h) {
@@ -129,6 +129,8 @@ final class ChatPanel {
                         r.add(new Item(Id.COLOR_TOGGLE, x, y, halfGlow, 18));
                         r.add(new Item(Id.RAINBOW_TOGGLE, x + halfGlow + 6, y, halfGlow, 18));
                         y += 24;
+                        r.add(new Item(Id.GLOW_TOGGLE, x, y, inner, 18));
+                        y += 24;
                         y = slider(r, Id.L_SIZE, x, y, inner);
                         y = slider(r, Id.L_SIDE, x, y, inner);
                     }
@@ -228,6 +230,7 @@ final class ChatPanel {
                 case POWER_PREV -> cycleIntensity(-1);
                 case POWER_NEXT -> cycleIntensity(1);
                 case RAINBOW_TOGGLE -> { VisionSettings.lyricsRainbow = !VisionSettings.lyricsRainbow; VisionSettings.save(); }
+                case GLOW_TOGGLE -> { VisionSettings.lyricsGlow = !VisionSettings.lyricsGlow; VisionSettings.save(); FloatingLyrics.modeChanged(); }
                 case POS_PREV -> { VisionSettings.hudPosition = Math.floorMod(VisionSettings.hudPosition - 1, LyricsHud.POSITIONS.length); VisionSettings.save(); }
                 case POS_NEXT -> { VisionSettings.hudPosition = Math.floorMod(VisionSettings.hudPosition + 1, LyricsHud.POSITIONS.length); VisionSettings.save(); }
                 case LINES_PREV -> { VisionSettings.hudLines = Math.max(2, VisionSettings.hudLines - 1); VisionSettings.save(); }
@@ -307,6 +310,7 @@ final class ChatPanel {
                 case LYR_TOGGLE -> button(g, font, r, FloatingLyrics.isEnabled() ? "Lyrics: On" : "Lyrics: Off", hot, FloatingLyrics.isEnabled(), accent);
                 case COLOR_TOGGLE -> button(g, font, r, VisionSettings.lyricsAlbumColor ? "Color: Album" : "Color: White", hot, VisionSettings.lyricsAlbumColor, accent);
                 case RAINBOW_TOGGLE -> button(g, font, r, VisionSettings.lyricsRainbow ? "Rainbow: On" : "Rainbow: Off", hot, VisionSettings.lyricsRainbow, accent);
+                case GLOW_TOGGLE -> button(g, font, r, VisionSettings.lyricsGlow ? "Glow: On" : "Glow: Off", hot, VisionSettings.lyricsGlow, accent);
                 case PANEL_TOGGLE -> button(g, font, r, VisionSettings.hudPanel ? "Panel: On" : "Panel: Off", hot, VisionSettings.hudPanel, accent);
                 case MODE_PREV, FONT_PREV, POS_PREV, LINES_PREV, ANIM_PREV, POWER_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }
                 case MODE_NEXT -> cycleLabel(g, font, prevItem, r, "Style", MODES[VisionSettings.lyricsMode], hot, accent);

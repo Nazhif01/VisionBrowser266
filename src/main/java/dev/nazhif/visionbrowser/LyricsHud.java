@@ -85,7 +85,7 @@ final class LyricsHud {
         }
 
         int totalWidth = 0;
-        for (LyricsEngine.Word word : words) totalWidth += font.width(word.text());
+        for (int i = 0; i < words.size(); i++) totalWidth += font.width(LyricsEngine.displayWord(words, i));
         float fit = totalWidth <= 0 ? 1f : Math.min(1f, maxWidth / (float) totalWidth);
         float finalScale = scale * fit;
         Matrix3x2fStack pose = g.pose();
@@ -97,6 +97,7 @@ final class LyricsHud {
             int cursor = 0;
             for (int i = 0; i < words.size(); i++) {
                 LyricsEngine.Word word = words.get(i);
+                String displayText = LyricsEngine.displayWord(words, i);
                 int color;
                 if (activeWord < 0) color = 0xFFB7C0D0;
                 else if (i < activeWord) color = 0xFF000000 | accent;
@@ -106,9 +107,9 @@ final class LyricsHud {
                     String value = "\u00a7l" + word.text();
                     g.text(font, value, cursor, 0, color, true);
                 } else {
-                    g.text(font, word.text(), cursor, 0, color, i < activeWord);
+                    g.text(font, displayText, cursor, 0, color, i < activeWord);
                 }
-                cursor += font.width(word.text());
+                cursor += font.width(displayText);
             }
         } finally {
             pose.popMatrix();

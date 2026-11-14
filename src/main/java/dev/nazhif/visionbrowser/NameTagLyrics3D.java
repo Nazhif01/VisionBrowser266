@@ -220,7 +220,8 @@ final class NameTagLyrics3D {
                 // Enhanced LRC: each chunk already carries an authoritative timestamp.
                 // Keep the chunk intact; never distribute its duration by character count.
                 for (LyricsEngine.Word source : sourceWords) {
-                    String part = source.text().trim();
+                    int wordIndex = sourceWords.indexOf(source);
+                    String part = LyricsEngine.displayWord(sourceWords, wordIndex);
                     if (part.isEmpty()) continue;
                     tokens.add(part);
                     starts.add(source.start());

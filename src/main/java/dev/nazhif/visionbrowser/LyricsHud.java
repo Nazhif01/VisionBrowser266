@@ -98,7 +98,7 @@ final class LyricsHud {
                 LyricsEngine.Word word = words.get(i);
                 int color;
                 if (activeWord < 0) color = 0xFFB7C0D0;
-                else if (i < activeWord) color = 0xFFB7C5E5;
+                else if (i < activeWord) color = 0xFF000000 | accent;
                 else if (i == activeWord) color = 0xFFFFFFFF;
                 else color = 0xFF858D9E;
                 if (i == activeWord) {

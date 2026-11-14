@@ -289,31 +289,100 @@ final class VisionMediaBridge {
                 String query = "track_name=" + URLEncoder.encode(title, StandardCharsets.UTF_8)
                         + "&artist_name=" + URLEncoder.encode(artist, StandardCharsets.UTF_8);
                 if (duration > 0 && duration < 3600) query += "&duration=" + Math.round(duration);
-                HttpRequest request = HttpRequest.newBuilder()
+
+                String synced = "";
+                HttpRequest exact = HttpRequest.newBuilder()
                         .uri(URI.create("https://lrclib.net/api/get?" + query))
                         .timeout(Duration.ofSeconds(12))
                         .header("User-Agent", "VisionBrowser/0.1.0 (Minecraft Fabric mod)")
                         .GET().build();
-                HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
-                if (!requestKey.equals(lastTrackKey)) return; // track changed while the request was running
-                if (response.statusCode() != 200) {
-                    FloatingLyrics.setUnavailable(response.statusCode() == 404
-                            ? "No synchronized lyrics found" : "Lyrics service unavailable");
-                    return;
+                HttpResponse<String> response = HTTP.send(exact, HttpResponse.BodyHandlers.ofString());
+                if (!requestKey.equals(lastTrackKey)) return;
+                if (response.statusCode() == 200) {
+                    JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+                    synced = json.has("syncedLyrics") && !json.get("syncedLyrics").isJsonNull()
+                            ? json.get("syncedLyrics").getAsString() : "";
                 }
-                JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
-                String synced = json.has("syncedLyrics") && !json.get("syncedLyrics").isJsonNull()
-                        ? json.get("syncedLyrics").getAsString() : "";
+
+                // Exact lookup can miss alternate punctuation, featured artists, and release metadata.
+                // Search fallback is still restricted to the song currently playing in Vision Browser.
+                if (synced.isBlank()) synced = searchLyrics(title, artist, duration, requestKey);
+                if (!requestKey.equals(lastTrackKey)) return;
+
                 if (synced.isBlank()) {
-                    FloatingLyrics.setUnavailable("This track has no timed lyrics");
+                    Minecraft.getInstance().execute(() ->
+                            FloatingLyrics.setUnavailable("No synchronized lyrics found"));
                     return;
                 }
-                FloatingLyrics.setLyrics(title, artist, synced);
+                String result = synced;
+                Minecraft.getInstance().execute(() -> {
+                    if (requestKey.equals(lastTrackKey)) FloatingLyrics.setLyrics(title, artist, result);
+                });
             } catch (Throwable error) {
-                if (requestKey.equals(lastTrackKey)) FloatingLyrics.setUnavailable("Could not load lyrics");
+                if (requestKey.equals(lastTrackKey)) {
+                    Minecraft.getInstance().execute(() ->
+                            FloatingLyrics.setUnavailable("Lyrics service unavailable"));
+                }
             }
-        }, "VisionBrowser-LRCLIB");
+        }, "VisionBrowser-LyricsLookup");
         worker.setDaemon(true);
         worker.start();
     }
+
+    private static String searchLyrics(String title, String artist, double duration, String requestKey) throws Exception {
+        String query = "track_name=" + URLEncoder.encode(title, StandardCharsets.UTF_8)
+                + "&artist_name=" + URLEncoder.encode(artist, StandardCharsets.UTF_8);
+        HttpRequest search = HttpRequest.newBuilder()
+                .uri(URI.create("https://lrclib.net/api/search?" + query))
+                .timeout(Duration.ofSeconds(12))
+                .header("User-Agent", "VisionBrowser/0.1.0 (Minecraft Fabric mod)")
+                .GET().build();
+        HttpResponse<String> response = HTTP.send(search, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200 || !requestKey.equals(lastTrackKey)) return "";
+
+        com.google.gson.JsonArray results = JsonParser.parseString(response.body()).getAsJsonArray();
+        String wantedTitle = normalize(title);
+        String wantedArtist = normalize(artist);
+        String bestLyrics = "";
+        double bestScore = Double.NEGATIVE_INFINITY;
+        for (com.google.gson.JsonElement element : results) {
+            if (!element.isJsonObject()) continue;
+            JsonObject item = element.getAsJsonObject();
+            String candidateTitle = str(item, "trackName");
+            String candidateArtist = str(item, "artistName");
+            String lyrics = str(item, "syncedLyrics");
+            if (lyrics.isBlank()) continue;
+
+            String normalizedTitle = normalize(candidateTitle);
+            String normalizedArtist = normalize(candidateArtist);
+            double score = similarity(wantedTitle, normalizedTitle) * 5.0
+                    + similarity(wantedArtist, normalizedArtist) * 3.0;
+            double candidateDuration = num(item, "duration");
+            if (duration > 0 && candidateDuration > 0) {
+                score -= Math.min(2.5, Math.abs(duration - candidateDuration) / 12.0);
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                bestLyrics = lyrics;
+            }
+        }
+        return bestScore >= 4.0 ? bestLyrics : "";
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.ROOT)
+                .replaceAll("\\([^)]*\\)", " ")
+                .replaceAll("[^\\p{L}\\p{N}]", "");
+    }
+
+    private static double similarity(String a, String b) {
+        if (a.isEmpty() || b.isEmpty()) return 0;
+        if (a.equals(b)) return 1;
+        if (a.contains(b) || b.contains(a)) return 0.85;
+        int common = 0;
+        int limit = Math.min(a.length(), b.length());
+        while (common < limit && a.charAt(common) == b.charAt(common)) common++;
+        return common / (double) Math.max(a.length(), b.length());
+    }
+
 }

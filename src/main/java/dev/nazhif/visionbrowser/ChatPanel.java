@@ -308,7 +308,7 @@ final class ChatPanel {
                 case COLOR_TOGGLE -> button(g, font, r, VisionSettings.lyricsAlbumColor ? "Color: Album" : "Color: White", hot, VisionSettings.lyricsAlbumColor, accent);
                 case RAINBOW_TOGGLE -> button(g, font, r, VisionSettings.lyricsRainbow ? "Rainbow: On" : "Rainbow: Off", hot, VisionSettings.lyricsRainbow, accent);
                 case PANEL_TOGGLE -> button(g, font, r, VisionSettings.hudPanel ? "Panel: On" : "Panel: Off", hot, VisionSettings.hudPanel, accent);
-                case MODE_PREV, FONT_PREV, POS_PREV, LINES_PREV, ANIM_PREV, POWER_PREV, GLOW_FACING_PREV, GLOW_PLACE_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }
+                case MODE_PREV, FONT_PREV, POS_PREV, LINES_PREV, ANIM_PREV, POWER_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }
                 case MODE_NEXT -> cycleLabel(g, font, prevItem, r, "Style", MODES[VisionSettings.lyricsMode], hot, accent);
                 case ANIM_NEXT -> cycleLabel(g, font, prevItem, r, "Animation", ANIMATIONS[VisionSettings.lyricsAnimation], hot, accent);
                 case POWER_NEXT -> cycleLabel(g, font, prevItem, r, "Intensity", INTENSITIES[VisionSettings.lyricsIntensity], hot, accent);

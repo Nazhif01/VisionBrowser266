@@ -16,7 +16,7 @@ final class VisionSettings {
     static volatile String lyricsFont = "Dialog";
     static volatile boolean floatLocked = true;  // floating window follows the player
     static final int MODE_TEXT = 0, MODE_GLOW = 1, MODE_HUD = 2;
-    static volatile int lyricsMode = MODE_GLOW;       // default to spatial glow lyrics; 0 = vanilla 3D text, 1 = 3D glow texture, 2 = karaoke HUD
+    static volatile int lyricsMode = MODE_TEXT;       // default to spatial glow lyrics; 0 = vanilla 3D text, 1 = 3D glow texture, 2 = karaoke HUD
     static volatile float lyricsDistance = 18f;       // 3D text: blocks in front of the player (6..40)
     static volatile float lyricsSpread = 1.0f;        // 3D text: how far left/right lines alternate (0..1.5)
     static volatile boolean lyricsAlbumColor = true;  // active lyric takes the album-cover colour

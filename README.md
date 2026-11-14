@@ -6,7 +6,7 @@ A client-side Fabric mod for Minecraft Java 26.3. Vision Browser embeds Chromium
 
 - Embedded Chromium browser with navigation and tabs
 - Browser-only media bridge for HTML audio/video pages opened in Vision Browser
-- Spatial lyrics with a world-facing glow presentation and a karaoke HUD option
+- Spatial lyrics with individually animated world-space words, a 3D glow presentation, and a karaoke HUD option
 - Enhanced LRC parsing, including per-word timestamps when supplied by the lyrics source
 - LRCLIB exact lookup with a title/artist search fallback
 - Album-art accent color, animated line transitions, and upcoming-line preview
@@ -20,7 +20,7 @@ The lyrics engine and renderer are original Vision Browser code. The media bridg
 
 The parser supports standard LRC timestamps, multiple timestamps on one line, offset metadata, and enhanced LRC word timestamps. Per-word karaoke highlighting appears when the returned lyrics contain word-level timing. Standard line-timed LRC remains supported.
 
-The spatial glow renderer is the default lyrics presentation. Its animation presets include Edit-style impact, pulse, fade-in, and wave motion, with Chill/Normal/Hype intensity, album-accent or white tint, optional animated rainbow tint, and chromatic split at higher intensity. The optional HUD mode shows the current line, upcoming lines, and word-level highlighting when enhanced LRC timestamps are available. Standard LRC has line-level timing only, so it cannot provide exact word-by-word synchronization.
+The default 3D Words renderer places each lyric word as a separate vanilla world-space text object, spread across the scene with staggered heights, subtle floating motion, cyan/green/white accents, and word-by-word entrance. Enhanced LRC timestamps drive exact word timing when supplied. Standard LRC has line-level timing only, so VisionBrowser estimates word timing from each word's character length. The alternate 3D Glow renderer keeps the animated texture presentation, with Edit-style impact, pulse, fade-in, and wave presets, Chill/Normal/Hype intensity, album-accent or white tint, optional rainbow tint, and chromatic split at higher intensity. The optional HUD mode remains available.
 
 Dynamic Island and Floating Window remain Vision Browser components. No Spotify or Windows system-media source is used.
 

@@ -253,7 +253,7 @@ final class NameTagLyrics3D {
             double spread = Math.max(0.75, VisionSettings.lyricsSpread) * 5.2;
             for (int i = 0; i < count; i++) {
                 double centered = i - (count - 1) / 2.0;
-                double xOffset = centered * Math.min(1.05, spread / Math.max(1, count / 2.0));
+                double xOffset = centered * Math.min(2.1, spread / Math.max(1, count / 2.0));
                 double yPattern = switch (i % 5) {
                     case 0 -> 1.15;
                     case 1 -> -0.45;

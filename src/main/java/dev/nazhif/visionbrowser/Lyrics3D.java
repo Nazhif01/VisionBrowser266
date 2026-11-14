@@ -117,14 +117,12 @@ final class Lyrics3D {
                         cp.z + direction.z * DISTANCE,
                         rxs, rzs, -direction.x, -direction.z);
             }
-            lines.add(line);
+            // Never stack old and new lyric sentences on top of each other.
+            for (Line previous : lines) release(previous);
+            lines.clear();
             activeLine = line;
+            lines.add(line);
             rasterize(line);
-            while (lines.size() > MAX_LINES) {
-                Line removed = lines.remove(0);
-                if (removed == activeLine) activeLine = null;
-                release(removed);
-            }
         } catch (Throwable error) {
             status = "3D lyrics: cannot place line (" + error.getClass().getSimpleName() + ")";
         }
@@ -392,6 +390,31 @@ final class Lyrics3D {
                     sw[i] = n[2];
                 }
                 if (visible) {
+                    // Keep the complete lyric quad inside a safe viewport margin.
+                    // Long wrapped lines are scaled down only as much as required, then centred/clamped.
+                    float minX = Math.min(Math.min(sx[0], sx[1]), Math.min(sx[2], sx[3]));
+                    float maxX = Math.max(Math.max(sx[0], sx[1]), Math.max(sx[2], sx[3]));
+                    float minY = Math.min(Math.min(sy[0], sy[1]), Math.min(sy[2], sy[3]));
+                    float maxY = Math.max(Math.max(sy[0], sy[1]), Math.max(sy[2], sy[3]));
+                    float safe = 28f;
+                    float availableW = Math.max(1f, gw - safe * 2f);
+                    float availableH = Math.max(1f, gh - safe * 2f);
+                    float fit = Math.min(1f, Math.min(availableW / Math.max(1f, maxX - minX),
+                            availableH / Math.max(1f, maxY - minY)));
+                    float centerX = (minX + maxX) * 0.5f;
+                    float centerY = (minY + maxY) * 0.5f;
+                    for (int i = 0; i < 4; i++) {
+                        sx[i] = centerX + (sx[i] - centerX) * fit;
+                        sy[i] = centerY + (sy[i] - centerY) * fit;
+                    }
+                    minX = centerX - (maxX - minX) * fit * 0.5f;
+                    maxX = centerX + (maxX - minX) * 0.5f;
+                    minY = centerY - (maxY - minY) * fit * 0.5f;
+                    maxY = centerY + (maxY - minY) * fit * 0.5f;
+                    float shiftX = minX < safe ? safe - minX : maxX > gw - safe ? (gw - safe) - maxX : 0f;
+                    float shiftY = minY < safe ? safe - minY : maxY > gh - safe ? (gh - safe) - maxY : 0f;
+                    for (int i = 0; i < 4; i++) { sx[i] += shiftX; sy[i] += shiftY; }
+
                     int tint = VisionSettings.lyricsRainbow
                             ? (java.awt.Color.HSBtoRGB((now % 5200L) / 5200f, 0.82f, 1f) & 0xFFFFFF)
                             : (VisionSettings.lyricsAlbumColor ? IslandArt.accent() & 0xFFFFFF : 0xFFFFFF);

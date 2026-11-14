@@ -116,12 +116,15 @@ final class ChatPanel {
                         y = slider(r, Id.L_DIST, x, y, inner);
                         y = slider(r, Id.L_SIZE, x, y, inner);
                         y = slider(r, Id.L_SPREAD, x, y, inner);
+                        y = cycle(r, Id.COLOR_PREV, Id.COLOR_NEXT, x, y, inner);
                         r.add(new Item(Id.COLOR_TOGGLE, x, y, inner, 18));
                         y += 24;
                     }
                     case VisionSettings.MODE_GLOW -> {
+                        y = slider(r, Id.L_DIST, x, y, inner);
                         y = cycle(r, Id.ANIM_PREV, Id.ANIM_NEXT, x, y, inner);
                         y = cycle(r, Id.POWER_PREV, Id.POWER_NEXT, x, y, inner);
+                        y = cycle(r, Id.COLOR_PREV, Id.COLOR_NEXT, x, y, inner);
                         y = cycle(r, Id.FONT_PREV, Id.FONT_NEXT, x, y, inner);
                         y = cycle(r, Id.GLOW_FACING_PREV, Id.GLOW_FACING_NEXT, x, y, inner);
                         y = cycle(r, Id.GLOW_PLACE_PREV, Id.GLOW_PLACE_NEXT, x, y, inner);
@@ -221,6 +224,8 @@ final class ChatPanel {
                 case MODE_NEXT -> cycleMode(1);
                 case FONT_PREV -> cycleFont(-1);
                 case FONT_NEXT -> cycleFont(1);
+                case COLOR_PREV -> cycleColor(-1);
+                case COLOR_NEXT -> cycleColor(1);
                 case GLOW_FACING_PREV -> setGlowFacing(-1);
                 case GLOW_FACING_NEXT -> setGlowFacing(1);
                 case GLOW_PLACE_PREV -> setGlowPlacement(-1);
@@ -316,7 +321,8 @@ final class ChatPanel {
                 case MODE_NEXT -> cycleLabel(g, font, prevItem, r, "Style", MODES[VisionSettings.lyricsMode], hot, accent);
                 case ANIM_NEXT -> cycleLabel(g, font, prevItem, r, "Animation", ANIMATIONS[VisionSettings.lyricsAnimation], hot, accent);
                 case POWER_NEXT -> cycleLabel(g, font, prevItem, r, "Intensity", INTENSITIES[VisionSettings.lyricsIntensity], hot, accent);
-                case FONT_NEXT -> cycleLabel(g, font, prevItem, r, "Font", VisionSettings.lyricsFont, hot, accent);\n                case COLOR_NEXT -> cycleLabel(g, font, prevItem, r, "Color", VisionSettings.LYRIC_COLORS[VisionSettings.lyricsColor], hot, accent);
+                case FONT_NEXT -> cycleLabel(g, font, prevItem, r, "Font", VisionSettings.lyricsFont, hot, accent);
+                case COLOR_NEXT -> cycleLabel(g, font, prevItem, r, "Color", VisionSettings.LYRIC_COLORS[VisionSettings.lyricsColor], hot, accent);\n                case COLOR_NEXT -> cycleLabel(g, font, prevItem, r, "Color", VisionSettings.LYRIC_COLORS[VisionSettings.lyricsColor], hot, accent);
                 case GLOW_FACING_PREV, GLOW_PLACE_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }
                 case GLOW_FACING_NEXT -> cycleLabel(g, font, prevItem, r, "Facing", VisionSettings.glowFacing == 1 ? "Billboard" : "World", hot, accent);
                 case GLOW_PLACE_NEXT -> cycleLabel(g, font, prevItem, r, "Spawn", VisionSettings.glowPlacement == 2 ? "Player Relative" : VisionSettings.glowPlacement == 1 ? "Random View" : "Crosshair", hot, accent);

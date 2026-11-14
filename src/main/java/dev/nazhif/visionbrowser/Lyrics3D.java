@@ -243,28 +243,55 @@ final class Lyrics3D {
                 if (tex == null || l.released) continue;
                 l.lift += (l.liftTarget - l.lift) * (1f - (float) Math.exp(-dt * 5f));
                 long age = now - l.born;
+                float intensity = switch (VisionSettings.lyricsIntensity) { case 0 -> 0.55f; case 2 -> 1.65f; default -> 1.0f; };
+                int animation = VisionSettings.lyricsAnimation;
+                float ageSeconds = age / 1000f;
+                float impact = (float) Math.exp(-age / (190f / intensity));
+                float pulse = animation == 1 ? 1f + (float) Math.sin(ageSeconds * 7.5f) * 0.045f * intensity : 1f;
+                float entrance = animation == 2 ? Math.min(1f, age / (900f / intensity)) : 1f;
                 float alpha = Math.min(1f, age / (float) FADE_IN_MS) * Math.max(0f, Math.min(1f, (LIFE_MS - age) / (float) FADE_OUT_MS));
-                alpha *= Math.max(0.3f, 1f - 0.35f * l.liftTarget);
-                double cx = l.cx, cy = l.cy + l.lift, cz = l.cz;
+                alpha *= Math.max(0.3f, 1f - 0.35f * l.liftTarget) * entrance;
+                if (animation == 0) alpha *= 0.88f + 0.12f * Math.min(1f, age / 220f);
+                double wave = animation == 3 ? Math.sin(ageSeconds * 3.8f) * 0.16f * intensity : 0.0;
+                double impactOffset = animation == 0 ? Math.sin(ageSeconds * 24f) * impact * 0.045f * intensity : 0.0;
+                double cx = l.cx + impactOffset, cy = l.cy + l.lift + wave, cz = l.cz;
                 if ((cp.x - cx) * l.nx + (cp.z - cz) * l.nz <= 0) continue; // seen from behind
                 double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
                 alpha *= (float) Math.max(0, Math.min(1, (dist - 0.8) / 1.5)) * (float) Math.max(0, Math.min(1, (64 - dist) / 24));
                 int a255 = Math.round(alpha * 255f);
                 if (a255 < 4) continue;
 
-                float hw = l.texW * BLOCKS_PER_PX * l.scale / 2f, hh = l.texH * BLOCKS_PER_PX * l.scale / 2f;
+                float editScale = animation == 0 ? 1f + impact * 0.18f * intensity : 1f;
+                float hw = l.texW * BLOCKS_PER_PX * l.scale * pulse * editScale / 2f;
+                float hh = l.texH * BLOCKS_PER_PX * l.scale * pulse * editScale / 2f;
+                float rotation = animation == 0 ? (float) Math.sin(ageSeconds * 18f) * impact * 0.055f * intensity : 0f;
+                float cs = (float) Math.cos(rotation), sn = (float) Math.sin(rotation);
                 float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}}; // TL, TR, BR, BL
                 float[] sx = new float[4], sy = new float[4], sw = new float[4];
                 boolean visible = true;
                 for (int i = 0; i < 4; i++) {
-                    double wx = cx + l.rx * corner[i][0], wy = cy + corner[i][1], wz = cz + l.rz * corner[i][0];
+                    float localX = corner[i][0] * cs - corner[i][1] * sn;
+                    float localY = corner[i][0] * sn + corner[i][1] * cs;
+                    double wx = cx + l.rx * localX, wy = cy + localY, wz = cz + l.rz * localX;
                     float[] n = ndc(vp, wx - cp.x, wy - cp.y, wz - cp.z);
                     if (n[2] < 0.1f) { visible = false; break; }
                     sx[i] = (n[0] * signX * 0.5f + 0.5f) * gw;
                     sy[i] = (0.5f - n[1] * signY * 0.5f) * gh;
                     sw[i] = n[2];
                 }
-                if (visible) drawStrips(g, tex, l.texW, l.texH, sx, sy, sw, gw, a255);
+                if (visible) {
+                    int tint = VisionSettings.lyricsRainbow
+                            ? (java.awt.Color.HSBtoRGB((now % 5200L) / 5200f, 0.82f, 1f) & 0xFFFFFF)
+                            : (VisionSettings.lyricsAlbumColor ? IslandArt.accent() & 0xFFFFFF : 0xFFFFFF);
+                    if (intensity > 0.8f) {
+                        float shift = 1.1f * intensity;
+                        float[] redX = sx.clone(), blueX = sx.clone();
+                        for (int i = 0; i < 4; i++) { redX[i] -= shift; blueX[i] += shift; }
+                        drawStrips(g, tex, l.texW, l.texH, redX, sy, sw, gw, Math.round(a255 * 0.34f), 0xFFFF667F);
+                        drawStrips(g, tex, l.texW, l.texH, blueX, sy, sw, gw, Math.round(a255 * 0.34f), 0xFF55DFFF);
+                    }
+                    drawStrips(g, tex, l.texW, l.texH, sx, sy, sw, gw, a255, tint);
+                }
             }
             return true;
         } catch (Throwable error) {
@@ -303,12 +330,12 @@ final class Lyrics3D {
     }
 
     private static void drawStrips(GuiGraphicsExtractor g, Identifier tex, int tw, int th,
-                                   float[] sx, float[] sy, float[] sw, int gw, int alpha) {
+                                   float[] sx, float[] sy, float[] sw, int gw, int alpha, int tint) {
         if (Math.abs(sx[1] - sx[0]) < 1f || Math.abs(sx[2] - sx[3]) < 1f) return;
         if (sx[1] < sx[0] || sx[2] < sx[3]) return;
         float left = Math.max(sx[0], sx[3]), right = Math.min(sx[1], sx[2]);
         int x0 = Math.max(0, (int) Math.ceil(left)), x1 = Math.min(gw, (int) Math.floor(right));
-        int color = (alpha << 24) | 0xFFFFFF;
+        int color = (alpha << 24) | (tint & 0xFFFFFF);
         for (int x = x0; x < x1; x++) {
             float xc = x + 0.5f;
             float tT = Math.max(0f, Math.min(1f, (xc - sx[0]) / (sx[1] - sx[0])));

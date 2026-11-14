@@ -34,6 +34,7 @@ final class Lyrics3D {
 
     private static final class Line {
         final long born = System.currentTimeMillis();
+        volatile long animationBorn = born;
         String text;
         double cx, cy, cz;         // world centre; updated when a followed line is released
         final double rx, rz;       // horizontal "right" unit vector
@@ -74,6 +75,9 @@ final class Lyrics3D {
         if (key.equals(lastKey)) {
             if (!text.equals(lastText) && activeLine != null && !text.isBlank()) {
                 activeLine.text = text;
+                // Restart only the entrance animation whenever the next lyric word is revealed.
+                // The lyric lifetime and fade timing remain tied to the original sentence.
+                activeLine.animationBorn = System.currentTimeMillis();
                 Identifier previous = activeLine.texture;
                 activeLine.texture = null;
                 if (previous != null) Minecraft.getInstance().getTextureManager().release(previous);
@@ -319,15 +323,17 @@ final class Lyrics3D {
                 if (tex == null || l.released) continue;
                 l.lift += (l.liftTarget - l.lift) * (1f - (float) Math.exp(-dt * 5f));
                 long age = now - l.born;
+                long wordAge = Math.max(0L, now - l.animationBorn);
                 float intensity = switch (VisionSettings.lyricsIntensity) { case 0 -> 0.55f; case 2 -> 1.65f; default -> 1.0f; };
                 int animation = VisionSettings.lyricsAnimation;
                 float ageSeconds = age / 1000f;
-                float impact = (float) Math.exp(-age / (190f / intensity));
-                float pulse = animation == 1 ? 1f + (float) Math.sin(ageSeconds * 7.5f) * 0.045f * intensity : 1f;
-                float entrance = animation == 2 ? Math.min(1f, age / (900f / intensity)) : 1f;
+                float wordAgeSeconds = wordAge / 1000f;
+                float impact = (float) Math.exp(-wordAge / (240f / intensity));
+                float pulse = animation == 1 ? 1f + (float) Math.sin(wordAgeSeconds * 7.5f) * 0.045f * intensity : 1f;
+                float entrance = animation == 2 ? Math.min(1f, wordAge / (420f / intensity)) : 1f;
                 float alpha = Math.min(1f, age / (float) FADE_IN_MS) * Math.max(0f, Math.min(1f, (LIFE_MS - age) / (float) FADE_OUT_MS));
                 alpha *= Math.max(0.3f, 1f - 0.35f * l.liftTarget) * entrance;
-                if (animation == 0) alpha *= 0.88f + 0.12f * Math.min(1f, age / 220f);
+                if (animation == 0) alpha *= 0.88f + 0.12f * Math.min(1f, wordAge / 220f);
                 double wave = animation == 3 ? Math.sin(ageSeconds * 3.8f) * 0.16f * intensity : 0.0;
                 double impactOffset = animation == 0 ? Math.sin(ageSeconds * 24f) * impact * 0.045f * intensity : 0.0;
                 double cx = l.cx + impactOffset, cy = l.cy + l.lift + wave, cz = l.cz;
@@ -368,13 +374,14 @@ final class Lyrics3D {
                 int a255 = Math.round(alpha * 255f);
                 if (a255 < 4) continue;
 
-                float editScale = animation == 0 ? 1f + impact * 0.18f * intensity : 1f;
+                float editScale = animation == 0 ? 1f + impact * 0.22f * intensity
+                        : 1f + impact * 0.10f * intensity;
                 float hw = l.texW * BLOCKS_PER_PX * l.scale * pulse * editScale / 2f;
                 float hh = l.texH * BLOCKS_PER_PX * l.scale * pulse * editScale / 2f;
                 double facingYaw = billboard ? Math.atan2(cp.x - cx, cz - cp.z) : yaw;
                 float planeRightX = billboard ? (float) -Math.cos(facingYaw) : (float) l.rx;
                 float planeRightZ = billboard ? (float) -Math.sin(facingYaw) : (float) l.rz;
-                float rotation = animation == 0 ? (float) Math.sin(ageSeconds * 18f) * impact * 0.055f * intensity : 0f;
+                float rotation = (float) Math.sin(wordAgeSeconds * 18f) * impact * 0.045f * intensity;
                 float cs = (float) Math.cos(rotation), sn = (float) Math.sin(rotation);
                 float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}}; // TL, TR, BR, BL
                 float[] sx = new float[4], sy = new float[4], sw = new float[4];

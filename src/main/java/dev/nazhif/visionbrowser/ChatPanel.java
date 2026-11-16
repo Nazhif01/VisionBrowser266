@@ -20,9 +20,9 @@ import java.util.Locale;
 final class ChatPanel {
     private enum Id {
         NONE, TAB_WINDOW, TAB_ISLAND, TAB_LYRICS,
-        FLOAT_TOGGLE, FLOAT_LOCK, FLOAT_SIZE, ISLAND_SIZE,
-        LYR_TOGGLE, MODE_PREV, MODE_NEXT, L_DIST, L_SIZE, L_SPREAD, L_SIDE, COLOR_TOGGLE, CAPS_TOGGLE, LAYOUT_PREV, LAYOUT_NEXT, L_OFFSET,
-        FONT_PREV, FONT_NEXT, POS_PREV, POS_NEXT, LINES_PREV, LINES_NEXT, PANEL_TOGGLE
+        FLOAT_TOGGLE, FLOAT_LOCK, FLOAT_BILLBOARD, FLOAT_SIZE, ISLAND_SIZE,
+        LYR_TOGGLE, WORD_TOGGLE, MODE_PREV, MODE_NEXT, LAYOUT_PREV, LAYOUT_NEXT, CAPS_TOGGLE, L_OFFSET, L_DIST, L_SIZE, L_SPREAD, L_SIDE, COLOR_TOGGLE,
+        FONT_PREV, FONT_NEXT, COLOR_PREV, COLOR_NEXT, POS_PREV, POS_NEXT, LINES_PREV, LINES_NEXT, PANEL_TOGGLE, ANIM_PREV, ANIM_NEXT, POWER_PREV, POWER_NEXT, RAINBOW_TOGGLE, GLOW_FACING_PREV, GLOW_FACING_NEXT, GLOW_PLACE_PREV, GLOW_PLACE_NEXT, GLOW_TOGGLE
     }
 
     private record Item(Id id, int x, int y, int w, int h) {
@@ -32,8 +32,10 @@ final class ChatPanel {
     private record Layout(List<Item> items, int x, int y, int height) { }
 
     private static final int W = 208;
-    private static final String[] MODES = {"3D Text", "3D Glow", "HUD"};
+    private static final String[] MODES = {"3D Words", "3D Glow", "HUD"};
     private static final String[] LAYOUTS = {"Scatter", "Single block", "Word by word"};
+    private static final String[] ANIMATIONS = {"Edit", "Pulse", "Fade In", "Wave", "Bounce", "Glitch", "Orbit", "Spotlight"};
+    private static final String[] INTENSITIES = {"Chill", "Normal", "Hype"};
     private static int tab = 2;                 // start on Lyrics: that is where most options live
     private static Id dragging = Id.NONE;
     private static Item dragItem;
@@ -103,26 +105,41 @@ final class ChatPanel {
                 r.add(new Item(Id.FLOAT_TOGGLE, x, y, half, 20));
                 r.add(new Item(Id.FLOAT_LOCK, x + half + 6, y, half, 20));
                 y += 26;
+                r.add(new Item(Id.FLOAT_BILLBOARD, x, y, inner, 18));
+                y += 24;
                 y = slider(r, Id.FLOAT_SIZE, x, y, inner);
             }
             case 1 -> y = slider(r, Id.ISLAND_SIZE, x, y, inner);
             default -> {
                 r.add(new Item(Id.LYR_TOGGLE, x, y, inner, 18));
+                y += 22;
+                r.add(new Item(Id.WORD_TOGGLE, x, y, inner, 18));
                 y += 24;
                 y = cycle(r, Id.MODE_PREV, Id.MODE_NEXT, x, y, inner);
+                y = cycle(r, Id.LAYOUT_PREV, Id.LAYOUT_NEXT, x, y, inner);
+                r.add(new Item(Id.CAPS_TOGGLE, x, y, inner, 18));
+                y += 22;
                 y = slider(r, Id.L_OFFSET, x, y, inner);
                 switch (VisionSettings.lyricsMode) {
                     case VisionSettings.MODE_TEXT -> {
-                        y = cycle(r, Id.LAYOUT_PREV, Id.LAYOUT_NEXT, x, y, inner);
                         y = slider(r, Id.L_DIST, x, y, inner);
                         y = slider(r, Id.L_SIZE, x, y, inner);
-                        if (VisionSettings.lyricsLayout != 2) y = slider(r, Id.L_SPREAD, x, y, inner);
-                        r.add(new Item(Id.COLOR_TOGGLE, x, y, half, 18));
-                        r.add(new Item(Id.CAPS_TOGGLE, x + half + 6, y, half, 18));
-                        y += 22;
+                        y = slider(r, Id.L_SPREAD, x, y, inner);
+                        y = cycle(r, Id.COLOR_PREV, Id.COLOR_NEXT, x, y, inner);
+                        y += 2;
                     }
                     case VisionSettings.MODE_GLOW -> {
+                        y = slider(r, Id.L_DIST, x, y, inner);
+                        y = cycle(r, Id.ANIM_PREV, Id.ANIM_NEXT, x, y, inner);
+                        y = cycle(r, Id.POWER_PREV, Id.POWER_NEXT, x, y, inner);
+                        y = cycle(r, Id.COLOR_PREV, Id.COLOR_NEXT, x, y, inner);
                         y = cycle(r, Id.FONT_PREV, Id.FONT_NEXT, x, y, inner);
+                        y = cycle(r, Id.GLOW_FACING_PREV, Id.GLOW_FACING_NEXT, x, y, inner);
+                        y = cycle(r, Id.GLOW_PLACE_PREV, Id.GLOW_PLACE_NEXT, x, y, inner);
+                        r.add(new Item(Id.RAINBOW_TOGGLE, x, y, inner, 18));
+                        y += 24;
+                        r.add(new Item(Id.GLOW_TOGGLE, x, y, inner, 18));
+                        y += 24;
                         y = slider(r, Id.L_SIZE, x, y, inner);
                         y = slider(r, Id.L_SIDE, x, y, inner);
                     }
@@ -130,8 +147,8 @@ final class ChatPanel {
                         y = cycle(r, Id.POS_PREV, Id.POS_NEXT, x, y, inner);
                         y = cycle(r, Id.LINES_PREV, Id.LINES_NEXT, x, y, inner);
                         y = slider(r, Id.L_SIZE, x, y, inner);
-                        r.add(new Item(Id.PANEL_TOGGLE, x, y, half, 18));
-                        r.add(new Item(Id.COLOR_TOGGLE, x + half + 6, y, half, 18));
+                        y = cycle(r, Id.COLOR_PREV, Id.COLOR_NEXT, x, y, inner);
+                        r.add(new Item(Id.PANEL_TOGGLE, x, y, inner, 18));
                         y += 24;
                     }
                 }
@@ -143,29 +160,29 @@ final class ChatPanel {
 
     private static int slider(List<Item> r, Id id, int x, int y, int inner) {
         r.add(new Item(id, x, y + 11, inner, 14));
-        return y + 11 + 14 + 5;
+        return y + 11 + 14 + 9;
     }
 
     private static int cycle(List<Item> r, Id prev, Id next, int x, int y, int inner) {
         r.add(new Item(prev, x, y + 11, 20, 18));
         r.add(new Item(next, x + inner - 20, y + 11, 20, 18));
-        return y + 11 + 18 + 5;
+        return y + 11 + 18 + 8;
     }
 
     // ------------------------------------------------------------------ values
 
     private static float min(Id id) {
-        return switch (id) { case FLOAT_SIZE -> 0.6f; case ISLAND_SIZE, L_SIZE -> 0.6f; case L_DIST -> 6f; case L_SPREAD -> 0f; case L_SIDE -> -1f; case L_OFFSET -> -3000f; default -> 0f; };
+        return switch (id) { case FLOAT_SIZE -> 0.6f; case L_OFFSET -> -3000f; case ISLAND_SIZE, L_SIZE -> 0.6f; case L_DIST -> 3f; case L_SPREAD -> 0f; case L_SIDE -> -1f; default -> 0f; };
     }
 
     private static float max(Id id) {
-        return switch (id) { case FLOAT_SIZE -> 7f; case ISLAND_SIZE -> 1.8f; case L_SIZE -> 1.6f; case L_DIST -> 40f; case L_SPREAD -> 1.5f; case L_SIDE -> 1f; case L_OFFSET -> 3000f; default -> 1f; };
+        return switch (id) { case FLOAT_SIZE -> 7f; case L_OFFSET -> 3000f; case ISLAND_SIZE -> 1.8f; case L_SIZE -> 1.6f; case L_DIST -> 34f; case L_SPREAD -> 1.5f; case L_SIDE -> 1f; default -> 1f; };
     }
 
     private static float get(Id id) {
         return switch (id) {
             case FLOAT_SIZE -> VisionSettings.floatWidth; case ISLAND_SIZE -> VisionSettings.islandScale; case L_SIZE -> VisionSettings.lyricsScale;
-            case L_DIST -> VisionSettings.lyricsDistance; case L_SPREAD -> VisionSettings.lyricsSpread; case L_SIDE -> VisionSettings.lyricsSide; case L_OFFSET -> VisionSettings.lyricsOffsetMs;
+            case L_OFFSET -> VisionSettings.lyricsOffsetMs; case L_DIST -> VisionSettings.lyricsDistance; case L_SPREAD -> VisionSettings.lyricsSpread; case L_SIDE -> VisionSettings.lyricsSide;
             default -> 0f;
         };
     }
@@ -173,15 +190,15 @@ final class ChatPanel {
     private static void set(Id id, float v) {
         switch (id) {
             case FLOAT_SIZE -> VisionSettings.floatWidth = v; case ISLAND_SIZE -> VisionSettings.islandScale = v; case L_SIZE -> VisionSettings.lyricsScale = v;
-            case L_DIST -> VisionSettings.lyricsDistance = v; case L_SPREAD -> VisionSettings.lyricsSpread = v; case L_SIDE -> VisionSettings.lyricsSide = v; case L_OFFSET -> VisionSettings.lyricsOffsetMs = Math.round(v / 10f) * 10;
+            case L_OFFSET -> VisionSettings.lyricsOffsetMs = Math.round(v / 10f) * 10; case L_DIST -> VisionSettings.lyricsDistance = v; case L_SPREAD -> VisionSettings.lyricsSpread = v; case L_SIDE -> VisionSettings.lyricsSide = v;
             default -> { }
         }
     }
 
     private static String caption(Id id) {
         return switch (id) {
-            case FLOAT_SIZE -> "Window size"; case ISLAND_SIZE -> "Island size"; case L_SIZE -> "Text size";
-            case L_DIST -> "Distance"; case L_SPREAD -> "Spread left/right"; case L_SIDE -> "Side"; case L_OFFSET -> "Sync (lyrics timing)";
+            case FLOAT_SIZE -> "Window size"; case L_OFFSET -> "Sync offset"; case ISLAND_SIZE -> "Island size"; case L_SIZE -> "Text size";
+            case L_DIST -> "Distance"; case L_SPREAD -> "Spread left/right"; case L_SIDE -> "Side";
             default -> "";
         };
     }
@@ -190,9 +207,8 @@ final class ChatPanel {
         float v = get(id);
         return switch (id) {
             case FLOAT_SIZE -> String.format(Locale.ROOT, "%.1f blocks", v);
-            case L_DIST -> String.format(Locale.ROOT, "%.0f blocks", v);
+            case L_OFFSET -> (v > 0 ? "+" : "") + Math.round(v) + " ms"; case L_DIST -> String.format(Locale.ROOT, "%.0f blocks", v);
             case L_SPREAD -> Math.round(v * 100) + "%";
-            case L_OFFSET -> (v > 0 ? "+" : "") + Math.round(v) + " ms";
             case L_SIDE -> Math.abs(v) < 0.05f ? "Center" : (v > 0 ? "Right " : "Left ") + Math.round(Math.abs(v) * 100) + "%";
             default -> Math.round(v * 100) + "%";
         };
@@ -209,20 +225,34 @@ final class ChatPanel {
                 case TAB_LYRICS -> tab = 2;
                 case FLOAT_TOGGLE -> FloatWindow.toggle();
                 case FLOAT_LOCK -> FloatWindow.toggleLock();
+                case FLOAT_BILLBOARD -> { VisionSettings.floatBillboard = !VisionSettings.floatBillboard; VisionSettings.save(); FloatWindow.refreshBillboard(); }
+                case WORD_TOGGLE -> { VisionSettings.lyricsWordByWord = !VisionSettings.lyricsWordByWord; VisionSettings.save(); FloatingLyrics.modeChanged(); }
+                case CAPS_TOGGLE -> { VisionSettings.lyricsUppercase = !VisionSettings.lyricsUppercase; VisionSettings.save(); FloatingLyrics.modeChanged(); }
+                case LAYOUT_PREV -> cycleLayout(-1);
+                case LAYOUT_NEXT -> cycleLayout(1);
                 case LYR_TOGGLE -> FloatingLyrics.toggle();
                 case MODE_PREV -> cycleMode(-1);
                 case MODE_NEXT -> cycleMode(1);
                 case FONT_PREV -> cycleFont(-1);
                 case FONT_NEXT -> cycleFont(1);
+                case COLOR_PREV -> cycleColor(-1);
+                case COLOR_NEXT -> cycleColor(1);
+                case GLOW_FACING_PREV -> setGlowFacing(-1);
+                case GLOW_FACING_NEXT -> setGlowFacing(1);
+                case GLOW_PLACE_PREV -> setGlowPlacement(-1);
+                case GLOW_PLACE_NEXT -> setGlowPlacement(1);
+                case ANIM_PREV -> cycleAnimation(-1);
+                case ANIM_NEXT -> cycleAnimation(1);
+                case POWER_PREV -> cycleIntensity(-1);
+                case POWER_NEXT -> cycleIntensity(1);
+                case RAINBOW_TOGGLE -> { VisionSettings.lyricsRainbow = !VisionSettings.lyricsRainbow; VisionSettings.save(); }
+                case GLOW_TOGGLE -> { VisionSettings.lyricsGlow = !VisionSettings.lyricsGlow; VisionSettings.save(); FloatingLyrics.modeChanged(); }
                 case POS_PREV -> { VisionSettings.hudPosition = Math.floorMod(VisionSettings.hudPosition - 1, LyricsHud.POSITIONS.length); VisionSettings.save(); }
                 case POS_NEXT -> { VisionSettings.hudPosition = Math.floorMod(VisionSettings.hudPosition + 1, LyricsHud.POSITIONS.length); VisionSettings.save(); }
                 case LINES_PREV -> { VisionSettings.hudLines = Math.max(2, VisionSettings.hudLines - 1); VisionSettings.save(); }
                 case LINES_NEXT -> { VisionSettings.hudLines = Math.min(6, VisionSettings.hudLines + 1); VisionSettings.save(); }
                 case PANEL_TOGGLE -> { VisionSettings.hudPanel = !VisionSettings.hudPanel; VisionSettings.save(); }
                 case COLOR_TOGGLE -> { VisionSettings.lyricsAlbumColor = !VisionSettings.lyricsAlbumColor; VisionSettings.save(); FloatingLyrics.modeChanged(); }
-                case CAPS_TOGGLE -> { VisionSettings.lyricsUppercase = !VisionSettings.lyricsUppercase; VisionSettings.save(); FloatingLyrics.modeChanged(); }
-                case LAYOUT_PREV -> { VisionSettings.lyricsLayout = Math.floorMod(VisionSettings.lyricsLayout - 1, LAYOUTS.length); VisionSettings.save(); FloatingLyrics.modeChanged(); }
-                case LAYOUT_NEXT -> { VisionSettings.lyricsLayout = Math.floorMod(VisionSettings.lyricsLayout + 1, LAYOUTS.length); VisionSettings.save(); FloatingLyrics.modeChanged(); }
                 case FLOAT_SIZE, ISLAND_SIZE, L_SIZE, L_DIST, L_SPREAD, L_SIDE, L_OFFSET -> {
                     dragging = r.id();
                     dragItem = r;
@@ -247,11 +277,29 @@ final class ChatPanel {
         if (was == Id.L_SIZE || was == Id.L_DIST || was == Id.L_SPREAD || was == Id.L_SIDE || was == Id.L_OFFSET) FloatingLyrics.modeChanged();
     }
 
+    private static void setGlowFacing(int dir) { VisionSettings.glowFacing = Math.floorMod(VisionSettings.glowFacing + dir, 2); VisionSettings.save(); FloatingLyrics.modeChanged(); }
+
+    private static void setGlowPlacement(int dir) { VisionSettings.glowPlacement = Math.floorMod(VisionSettings.glowPlacement + dir, 3); VisionSettings.save(); FloatingLyrics.modeChanged(); }
+
+    private static void cycleLayout(int dir) { VisionSettings.lyricsLayout = Math.floorMod(VisionSettings.lyricsLayout + dir, LAYOUTS.length); VisionSettings.save(); FloatingLyrics.modeChanged(); }
+
     private static void cycleMode(int dir) {
         VisionSettings.lyricsMode = Math.floorMod(VisionSettings.lyricsMode + dir, MODES.length);
         VisionSettings.save();
         FloatingLyrics.modeChanged();
     }
+
+    private static void cycleAnimation(int dir) {
+        VisionSettings.lyricsAnimation = Math.floorMod(VisionSettings.lyricsAnimation + dir, ANIMATIONS.length);
+        VisionSettings.save();
+    }
+
+    private static void cycleIntensity(int dir) {
+        VisionSettings.lyricsIntensity = Math.floorMod(VisionSettings.lyricsIntensity + dir, INTENSITIES.length);
+        VisionSettings.save();
+    }
+
+    private static void cycleColor(int dir) { VisionSettings.lyricsColor = Math.floorMod(VisionSettings.lyricsColor + dir, VisionSettings.LYRIC_COLORS.length); VisionSettings.save(); FloatingLyrics.modeChanged(); }
 
     private static void cycleFont(int dir) {
         List<String> names = LyricFonts.names();
@@ -279,14 +327,24 @@ final class ChatPanel {
                 case TAB_LYRICS -> button(g, font, r, "Lyrics", hot, tab == 2, accent);
                 case FLOAT_TOGGLE -> button(g, font, r, FloatWindow.isEnabled() ? "Floating: On" : "Floating: Off", hot, FloatWindow.isEnabled(), accent);
                 case FLOAT_LOCK -> button(g, font, r, FloatWindow.isLocked() ? "Locked" : "Free", hot, FloatWindow.isLocked(), accent);
+                case FLOAT_BILLBOARD -> button(g, font, r, VisionSettings.floatBillboard ? "Billboard: On" : "Billboard: Off", hot, VisionSettings.floatBillboard, accent);
                 case LYR_TOGGLE -> button(g, font, r, FloatingLyrics.isEnabled() ? "Lyrics: On" : "Lyrics: Off", hot, FloatingLyrics.isEnabled(), accent);
-                case COLOR_TOGGLE -> button(g, font, r, VisionSettings.lyricsAlbumColor ? "Color: Album" : "Color: White", hot, VisionSettings.lyricsAlbumColor, accent);
-                case CAPS_TOGGLE -> button(g, font, r, VisionSettings.lyricsUppercase ? "CAPS: On" : "CAPS: Off", hot, VisionSettings.lyricsUppercase, accent);
+                case WORD_TOGGLE -> button(g, font, r, VisionSettings.lyricsWordByWord ? "Word by word: On" : "Word by word: Off", hot, VisionSettings.lyricsWordByWord, accent);
+                case CAPS_TOGGLE -> button(g, font, r, VisionSettings.lyricsUppercase ? "Uppercase: On" : "Uppercase: Off", hot, VisionSettings.lyricsUppercase, accent);
+                case COLOR_TOGGLE -> button(g, font, r, "Use selected palette", hot, true, accent);
+                case RAINBOW_TOGGLE -> button(g, font, r, VisionSettings.lyricsRainbow ? "Rainbow: On" : "Rainbow: Off", hot, VisionSettings.lyricsRainbow, accent);
+                case GLOW_TOGGLE -> button(g, font, r, VisionSettings.lyricsGlow ? "Glow: On" : "Glow: Off", hot, VisionSettings.lyricsGlow, accent);
                 case PANEL_TOGGLE -> button(g, font, r, VisionSettings.hudPanel ? "Panel: On" : "Panel: Off", hot, VisionSettings.hudPanel, accent);
-                case MODE_PREV, FONT_PREV, POS_PREV, LINES_PREV, LAYOUT_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }
+                case MODE_PREV, LAYOUT_PREV, FONT_PREV, COLOR_PREV, POS_PREV, LINES_PREV, ANIM_PREV, POWER_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }
                 case MODE_NEXT -> cycleLabel(g, font, prevItem, r, "Style", MODES[VisionSettings.lyricsMode], hot, accent);
                 case LAYOUT_NEXT -> cycleLabel(g, font, prevItem, r, "Layout", LAYOUTS[VisionSettings.lyricsLayout], hot, accent);
+                case ANIM_NEXT -> cycleLabel(g, font, prevItem, r, "Animation", ANIMATIONS[VisionSettings.lyricsAnimation], hot, accent);
+                case POWER_NEXT -> cycleLabel(g, font, prevItem, r, "Intensity", INTENSITIES[VisionSettings.lyricsIntensity], hot, accent);
                 case FONT_NEXT -> cycleLabel(g, font, prevItem, r, "Font", VisionSettings.lyricsFont, hot, accent);
+                case COLOR_NEXT -> cycleLabel(g, font, prevItem, r, "Color", VisionSettings.LYRIC_COLORS[VisionSettings.lyricsColor], hot, accent);
+                case GLOW_FACING_PREV, GLOW_PLACE_PREV -> { button(g, font, r, "<", hot, false, accent); prevItem = r; }
+                case GLOW_FACING_NEXT -> cycleLabel(g, font, prevItem, r, "Facing", VisionSettings.glowFacing == 1 ? "Billboard" : "World", hot, accent);
+                case GLOW_PLACE_NEXT -> cycleLabel(g, font, prevItem, r, "Spawn", VisionSettings.glowPlacement == 2 ? "Player Relative" : VisionSettings.glowPlacement == 1 ? "Random View" : "Crosshair", hot, accent);
                 case POS_NEXT -> cycleLabel(g, font, prevItem, r, "Position", LyricsHud.POSITIONS[VisionSettings.hudPosition], hot, accent);
                 case LINES_NEXT -> cycleLabel(g, font, prevItem, r, "Lines", String.valueOf(VisionSettings.hudLines), hot, accent);
                 case FLOAT_SIZE, ISLAND_SIZE, L_SIZE, L_DIST, L_SPREAD, L_SIDE, L_OFFSET -> slider(g, font, r, caption(r.id()), valueText(r.id()),

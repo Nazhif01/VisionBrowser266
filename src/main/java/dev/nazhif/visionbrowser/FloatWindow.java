@@ -33,7 +33,8 @@ final class FloatWindow {
     private static boolean enabled, locked = true, screenOpen;
     private static final float distance = 3.0f;
     private static double cx, cy, cz;
-    private static boolean poseInit;
+    private static boolean poseInit, planeInit;
+    private static double[] planeRight = {1, 0, 0}, planeUp = {0, 1, 0};
     private static long enabledAt, lastNanos, toastUntil;
     private static String toast = "";
     private static volatile String status = "Floating window: off";
@@ -52,10 +53,13 @@ final class FloatWindow {
     static boolean isLocked() { return locked; }
     static String status() { return status; }
 
+    static void refreshBillboard() { planeInit = false; poseInit = false; }
+
     static void setEnabled(boolean on) {
         enabled = on;
         if (on) {
             poseInit = false;
+            planeInit = false;
             enabledAt = System.currentTimeMillis();
             applySize();
             say("Floating window ON (" + (locked ? "locked" : "free") + ")");
@@ -143,7 +147,11 @@ final class FloatWindow {
             status = "Floating window: ok" + (locked ? " (locked)" : " (free)");
 
             // pose: follow the camera while locked, freeze when free
-            double tx = cp.x + lx * distance, ty = cp.y + ly * distance, tz = cp.z + lz * distance;
+            double bodyYaw = Math.toRadians(mc.player.getYRot());
+            double bodyFx = -Math.sin(bodyYaw), bodyFz = Math.cos(bodyYaw);
+            double tx = VisionSettings.floatBillboard ? cp.x + lx * distance : mc.player.getX() + bodyFx * distance;
+            double ty = VisionSettings.floatBillboard ? cp.y + ly * distance : mc.player.getEyeY() - 0.25;
+            double tz = VisionSettings.floatBillboard ? cp.z + lz * distance : mc.player.getZ() + bodyFz * distance;
             if (!poseInit) { cx = tx; cy = ty; cz = tz; poseInit = true; }
             if (locked) {
                 double k = 1.0 - Math.exp(-dt * 9.0);
@@ -151,8 +159,20 @@ final class FloatWindow {
             }
             // The window always faces the camera completely (screen-parallel, pitch included), so it never looks squashed when the
             // player looks up or down. right = camera right (horizontal), up = right x forward.
-            double[] right = {rxv, 0, rzv};
-            double[] upv = {-rzv * ly, rzv * lx - rxv * lz, rxv * ly};
+            double[] right;
+            double[] upv;
+            if (VisionSettings.floatBillboard) {
+                right = new double[]{rxv, 0, rzv};
+                upv = new double[]{-rzv * ly, rzv * lx - rxv * lz, rxv * ly};
+            } else {
+                if (!planeInit) {
+                    planeRight = new double[]{-Math.cos(bodyYaw), 0, -Math.sin(bodyYaw)};
+                    planeUp = new double[]{0, 1, 0};
+                    planeInit = true;
+                }
+                right = planeRight;
+                upv = planeUp;
+            }
 
             double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
             float fade = Math.min(1f, (now - enabledAt) / 350f) * (float) Math.max(0, Math.min(1, (dist - 0.5) / 1.0));

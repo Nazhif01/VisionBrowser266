@@ -314,7 +314,7 @@ final class NameTagLyrics3D {
             double singDur = singingSeconds(shown, nextStart > lineStart ? nextStart - lineStart : 4.0);
             int layout = VisionSettings.lyricsLayout;
             Group g;
-            if (layout == 2) g = wordByWord(shown, cp, yaw, pitch, lineStart, singDur);
+            if (layout == 2 && VisionSettings.lyricsWordByWord && FloatingLyrics.hasWordTimings(text)) g = wordByWord(shown, cp, yaw, pitch, lineStart, singDur);
             else g = new Group(layout == 0 ? scatter(shown, cp, yaw, pitch) : single(shown, cp, yaw, pitch), null, null, null, 0f, lineStart, singDur, colorPrefix());
             active = g;
         } catch (Throwable error) {

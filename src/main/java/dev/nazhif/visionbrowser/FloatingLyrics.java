@@ -97,7 +97,7 @@ final class FloatingLyrics {
 
     private static String progressiveGlowText(Line line, double position) {
         List<LyricsEngine.Word> words = line.words();
-        if (words.isEmpty()) return line.text();
+        if (!VisionSettings.lyricsWordByWord || words.isEmpty()) return line.text();
         StringBuilder visible = new StringBuilder();
         if (words.size() == 1) {
             // Standard LRC has only a line timestamp, not reliable per-word timing.
@@ -117,7 +117,14 @@ final class FloatingLyrics {
         return track.lines().isEmpty() ? -1 : track.indexAt(positionSeconds);
     }
 
+    static boolean hasWordTimings(String text) {
+        if (text == null) return false;
+        for (Line line : lines) if (line.text().equals(text) && line.words().size() > 1) return true;
+        return false;
+    }
+
     static int activeWord(int lineIndex, double positionSeconds) {
+        if (!VisionSettings.lyricsWordByWord) return -1;
         return track.wordAt(lineIndex, positionSeconds);
     }
 

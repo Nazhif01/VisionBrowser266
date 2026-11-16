@@ -31,7 +31,7 @@ import java.util.Locale;
  */
 final class NameTagLyrics3D {
     private static final int FULL_BRIGHT = 15728880;
-    private static final long EXIT_MS = 280;
+    private static final long EXIT_MS = 1800;
 
     private static final class Inst {
         final List<String> lines;

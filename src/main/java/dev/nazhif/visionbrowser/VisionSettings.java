@@ -15,14 +15,31 @@ final class VisionSettings {
     static volatile float lyricsScale = 1.0f;    // lyric size multiplier
     static volatile String lyricsFont = "Dialog";
     static volatile boolean floatLocked = true;  // floating window follows the player
+    static volatile boolean floatBillboard = true;
     static final int MODE_TEXT = 0, MODE_GLOW = 1, MODE_HUD = 2;
     static volatile int lyricsMode = MODE_TEXT;       // 0 = 3D text (vanilla world text), 1 = 3D glow texture (own fonts), 2 = HUD panel
     static volatile float lyricsDistance = 18f;       // 3D text: blocks in front of the player (6..40)
     static volatile float lyricsSpread = 1.0f;        // 3D text: how far left/right lines alternate (0..1.5)
     static volatile boolean lyricsAlbumColor = true;  // active lyric takes the album-cover colour
+    static volatile int lyricsAnimation = 4;
+    static volatile int lyricsIntensity = 1;
+    static volatile boolean lyricsRainbow = false;
+    static volatile boolean lyricsGlow = true;
+    static volatile int glowFacing = 1;
+    static volatile int glowPlacement = 0;
+    static volatile boolean lyricsWordByWord = true;
+    static volatile int lyricsLayout = 0;             // 3D text layout: 0 = scatter (chunks across the sky), 1 = single block, 2 = word by word
+    static volatile int lyricsOffsetMs = 0;           // lyric timing offset in ms (+ = lyrics earlier), for songs whose lyrics are slightly off
+    static volatile boolean lyricsUppercase = true;   // 3D text in capitals
     static volatile int hudPosition = 0;              // 0 above crosshair, 1 centre, 2 top, 3 bottom, 4 top-left, 5 top-right
     static volatile int hudLines = 3;                 // 2..6 lines in the HUD panel
     static volatile boolean hudPanel = false;         // dark panel behind the HUD lyrics
+
+
+    static volatile int lyricsColor = 0;
+    static final String[] LYRIC_COLORS = {"Cyan", "Ice Blue", "Sky", "Blue", "Violet", "Purple", "Magenta", "Pink", "Red", "Coral", "Orange", "Amber", "Yellow", "Lime", "Green", "White"};
+    static final int[] LYRIC_COLOR_RGB = {0x45E8FF,0xB8F4FF,0x55BFFF,0x397BFF,0x9270FF,0xB45CFF,0xF05BFF,0xFF79B8,0xFF5268,0xFF8066,0xFF9D45,0xFFC247,0xFFF06A,0xB9F45B,0x54E6A1,0xFFFFFF};
+    static int lyricColorRgb() { return LYRIC_COLOR_RGB[Math.max(0, Math.min(LYRIC_COLOR_RGB.length - 1, lyricsColor))]; }
 
     private static final Path FILE = Path.of("config", "visionbrowser.json");
 
@@ -40,10 +57,21 @@ final class VisionSettings {
             if (o.has("lyricsScale")) lyricsScale = clamp(o.get("lyricsScale").getAsFloat(), 0.6f, 1.6f);
             if (o.has("lyricsFont")) lyricsFont = o.get("lyricsFont").getAsString();
             if (o.has("floatLocked")) floatLocked = o.get("floatLocked").getAsBoolean();
+            if (o.has("floatBillboard")) floatBillboard = o.get("floatBillboard").getAsBoolean();
             if (o.has("lyricsMode")) lyricsMode = Math.max(0, Math.min(2, o.get("lyricsMode").getAsInt()));
             if (o.has("lyricsDistance")) lyricsDistance = clamp(o.get("lyricsDistance").getAsFloat(), 6f, 40f);
             if (o.has("lyricsSpread")) lyricsSpread = clamp(o.get("lyricsSpread").getAsFloat(), 0f, 1.5f);
             if (o.has("lyricsAlbumColor")) lyricsAlbumColor = o.get("lyricsAlbumColor").getAsBoolean();
+            if (o.has("lyricsAnimation")) lyricsAnimation = Math.max(0, Math.min(7, o.get("lyricsAnimation").getAsInt()));
+            if (o.has("lyricsIntensity")) lyricsIntensity = Math.max(0, Math.min(2, o.get("lyricsIntensity").getAsInt()));
+            if (o.has("lyricsRainbow")) lyricsRainbow = o.get("lyricsRainbow").getAsBoolean();
+            if (o.has("lyricsGlow")) lyricsGlow = o.get("lyricsGlow").getAsBoolean();
+            if (o.has("glowFacing")) glowFacing = Math.max(0, Math.min(1, o.get("glowFacing").getAsInt()));
+            if (o.has("glowPlacement")) glowPlacement = Math.max(0, Math.min(2, o.get("glowPlacement").getAsInt()));
+            if (o.has("lyricsWordByWord")) lyricsWordByWord = o.get("lyricsWordByWord").getAsBoolean();
+            if (o.has("lyricsLayout")) lyricsLayout = Math.max(0, Math.min(2, o.get("lyricsLayout").getAsInt()));
+            if (o.has("lyricsOffsetMs")) lyricsOffsetMs = Math.max(-3000, Math.min(3000, o.get("lyricsOffsetMs").getAsInt()));
+            if (o.has("lyricsUppercase")) lyricsUppercase = o.get("lyricsUppercase").getAsBoolean();
             if (o.has("hudPosition")) hudPosition = Math.max(0, Math.min(5, o.get("hudPosition").getAsInt()));
             if (o.has("hudLines")) hudLines = Math.max(2, Math.min(6, o.get("hudLines").getAsInt()));
             if (o.has("hudPanel")) hudPanel = o.get("hudPanel").getAsBoolean();
@@ -61,10 +89,21 @@ final class VisionSettings {
             o.addProperty("lyricsScale", lyricsScale);
             o.addProperty("lyricsFont", lyricsFont);
             o.addProperty("floatLocked", floatLocked);
+            o.addProperty("floatBillboard", floatBillboard);
             o.addProperty("lyricsMode", lyricsMode);
             o.addProperty("lyricsDistance", lyricsDistance);
             o.addProperty("lyricsSpread", lyricsSpread);
             o.addProperty("lyricsAlbumColor", lyricsAlbumColor);
+            o.addProperty("lyricsAnimation", lyricsAnimation);
+            o.addProperty("lyricsIntensity", lyricsIntensity);
+            o.addProperty("lyricsRainbow", lyricsRainbow);
+            o.addProperty("lyricsGlow", lyricsGlow);
+            o.addProperty("glowFacing", glowFacing);
+            o.addProperty("glowPlacement", glowPlacement);
+            o.addProperty("lyricsWordByWord", lyricsWordByWord);
+            o.addProperty("lyricsLayout", lyricsLayout);
+            o.addProperty("lyricsOffsetMs", lyricsOffsetMs);
+            o.addProperty("lyricsUppercase", lyricsUppercase);
             o.addProperty("hudPosition", hudPosition);
             o.addProperty("hudLines", hudLines);
             o.addProperty("hudPanel", hudPanel);

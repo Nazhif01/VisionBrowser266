@@ -17,8 +17,9 @@ import org.joml.Vector4f;
 
 /**
  * Apple-Vision-Pro-style floating browser window in the 3D world.
- * LOCKED: the window follows the player (smooth, floaty) and always faces them.
- * FREE  : the window stays exactly where it was when the lock was released.
+ * LOCKED: the window follows the player (smooth, floaty).
+ * FREE  : the window stays at the spot where the lock was released.
+ * In both modes it always faces the camera completely (pitch included), so it never looks flat or squashed.
  * The live browser texture is projected with the game's own camera + projection matrix and drawn perspective-correct as
  * thin strips through the verified GUI blit call (see Lyrics3D). Corners are rounded in plane space, with a glass rim and glow.
  * Frameless: only the page with rounded corners (plus a small capsule under it that shows the lock state).
@@ -31,8 +32,9 @@ final class FloatWindow {
 
     private static boolean enabled, locked = true, screenOpen;
     private static final float distance = 3.0f;
-    private static double cx, cy, cz, rx = 1, rz = 0, nx = 0, nz = 1;
-    private static boolean poseInit, faceInit;
+    private static double cx, cy, cz;
+    private static boolean poseInit, planeInit;
+    private static double[] planeRight = {1, 0, 0}, planeUp = {0, 1, 0};
     private static long enabledAt, lastNanos, toastUntil;
     private static String toast = "";
     private static volatile String status = "Floating window: off";
@@ -51,11 +53,13 @@ final class FloatWindow {
     static boolean isLocked() { return locked; }
     static String status() { return status; }
 
+    static void refreshBillboard() { planeInit = false; poseInit = false; }
+
     static void setEnabled(boolean on) {
         enabled = on;
         if (on) {
             poseInit = false;
-            faceInit = false;
+            planeInit = false;
             enabledAt = System.currentTimeMillis();
             applySize();
             say("Floating window ON (" + (locked ? "locked" : "free") + ")");
@@ -143,17 +147,32 @@ final class FloatWindow {
             status = "Floating window: ok" + (locked ? " (locked)" : " (free)");
 
             // pose: follow the camera while locked, freeze when free
-            double tx = cp.x + lx * distance, ty = cp.y + ly * distance, tz = cp.z + lz * distance;
+            double bodyYaw = Math.toRadians(mc.player.getYRot());
+            double bodyFx = -Math.sin(bodyYaw), bodyFz = Math.cos(bodyYaw);
+            double tx = VisionSettings.floatBillboard ? cp.x + lx * distance : mc.player.getX() + bodyFx * distance;
+            double ty = VisionSettings.floatBillboard ? cp.y + ly * distance : mc.player.getEyeY() - 0.25;
+            double tz = VisionSettings.floatBillboard ? cp.z + lz * distance : mc.player.getZ() + bodyFz * distance;
             if (!poseInit) { cx = tx; cy = ty; cz = tz; poseInit = true; }
             if (locked) {
                 double k = 1.0 - Math.exp(-dt * 9.0);
                 cx += (tx - cx) * k; cy += (ty - cy) * k; cz += (tz - cz) * k;
             }
-            if (locked || !faceInit) {
-                double dx = cp.x - cx, dz = cp.z - cz, len = Math.hypot(dx, dz);
-                if (len > 0.3) { nx = dx / len; nz = dz / len; rx = nz; rz = -nx; faceInit = true; }
+            // The window always faces the camera completely (screen-parallel, pitch included), so it never looks squashed when the
+            // player looks up or down. right = camera right (horizontal), up = right x forward.
+            double[] right;
+            double[] upv;
+            if (VisionSettings.floatBillboard) {
+                right = new double[]{rxv, 0, rzv};
+                upv = new double[]{-rzv * ly, rzv * lx - rxv * lz, rxv * ly};
+            } else {
+                if (!planeInit) {
+                    planeRight = new double[]{-Math.cos(bodyYaw), 0, -Math.sin(bodyYaw)};
+                    planeUp = new double[]{0, 1, 0};
+                    planeInit = true;
+                }
+                right = planeRight;
+                upv = planeUp;
             }
-            if ((cp.x - cx) * nx + (cp.z - cz) * nz <= 0) return; // seen from behind
 
             double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
             float fade = Math.min(1f, (now - enabledAt) / 350f) * (float) Math.max(0, Math.min(1, (dist - 0.5) / 1.0));
@@ -163,7 +182,7 @@ final class FloatWindow {
             int gw = mc.getWindow().getGuiScaledWidth(), gh = mc.getWindow().getGuiScaledHeight();
             float hw = VisionSettings.floatWidth / 2f, hh = hw / ASPECT;
             int accent = IslandArt.accent() & 0xFFFFFF;
-            Ctx c = new Ctx(vp, cp, signX, signY, gw, gh);
+            Ctx c = new Ctx(vp, cp, signX, signY, gw, gh, right, upv);
 
             // frameless: just the live page with rounded corners (no rim, no glow ring)
             int color = (a << 24) | 0xFFFFFF;
@@ -171,9 +190,9 @@ final class FloatWindow {
                     g.blit(RenderPipelines.GUI_TEXTURED, tex, x, top, u0 * VIRT, t0 * VIRT, step, height,
                             Math.max(1, Math.round((u1 - u0) * VIRT)), Math.max(1, Math.round((t1 - t0) * VIRT)), VIRT, VIRT, color));
             // lock indicator capsule under the window: bright accent = locked, white = free
-            double barY = cy - (hh + 0.14);
+            double drop = hh + 0.14;
             int barColor = locked ? ((a * 0xB0 / 255 << 24) | accent | 0x303030) : ((a * 0x60 / 255 << 24) | 0xFFFFFF);
-            capsule(g, c, barY, 0.16f, 0.018f, barColor);
+            capsule(g, c, cx - upv[0] * drop, cy - upv[1] * drop, cz - upv[2] * drop, 0.16f, 0.018f, barColor);
         } catch (Throwable error) {
             status = "Floating window: error (" + error.getClass().getSimpleName() + ")";
         }
@@ -183,7 +202,7 @@ final class FloatWindow {
         return (x, top, height, step, t0, t1, u0, u1) -> g.fill(x, top, x + step, top + height, argb);
     }
 
-    private record Ctx(Matrix4f vp, Vec3 cp, float signX, float signY, int gw, int gh) { }
+    private record Ctx(Matrix4f vp, Vec3 cp, float signX, float signY, int gw, int gh, double[] r, double[] u) { }
 
     /** one rounded quad of the window plane, enlarged by margin (blocks) */
     private static void layer(GuiGraphicsExtractor g, Ctx c, double centerY, float hw, float hh, float margin, int step, Painter p) {
@@ -192,15 +211,17 @@ final class FloatWindow {
         quad(c, cx, centerY, cz, w, h, rv, w / h, step, p);
     }
 
-    private static void capsule(GuiGraphicsExtractor g, Ctx c, double centerY, float hw, float hh, int argb) {
-        quad(c, cx, centerY, cz, hw, hh, 0.5f, hw / hh, 1, fillPainter(g, argb));
+    private static void capsule(GuiGraphicsExtractor g, Ctx c, double qx, double qy, double qz, float hw, float hh, int argb) {
+        quad(c, qx, qy, qz, hw, hh, 0.5f, hw / hh, 1, fillPainter(g, argb));
     }
 
     private static void quad(Ctx c, double qx, double qy, double qz, float hw, float hh, float rv, float aspect, int step, Painter p) {
         float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}};   // TL, TR, BR, BL
         float[] sx = new float[4], sy = new float[4], sw = new float[4];
         for (int i = 0; i < 4; i++) {
-            double wx = qx + rx * corner[i][0], wy = qy + corner[i][1], wz = qz + rz * corner[i][0];
+            double wx = qx + c.r()[0] * corner[i][0] + c.u()[0] * corner[i][1];
+            double wy = qy + c.r()[1] * corner[i][0] + c.u()[1] * corner[i][1];
+            double wz = qz + c.r()[2] * corner[i][0] + c.u()[2] * corner[i][1];
             float[] n = ndc(c.vp(), wx - c.cp().x, wy - c.cp().y, wz - c.cp().z);
             if (n[2] < 0.1f) return;
             sx[i] = (n[0] * c.signX() * 0.5f + 0.5f) * c.gw();

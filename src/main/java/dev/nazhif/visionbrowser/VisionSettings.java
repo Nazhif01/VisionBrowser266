@@ -31,6 +31,10 @@ final class VisionSettings {
     static volatile float lyricsLifeSeconds = 7.5f;
     static volatile int lyricsMaxLines = 3;
     static volatile int lyricsFontSize = 48;
+    static volatile boolean lyricsPlayerRelative = false;
+    static volatile boolean lyricsFollowRotation = true;
+    static volatile float lyricsVerticalOffset = 1.4f;
+    static volatile float lyricsHorizontalOffset = 0f;
 
     private static final Path FILE = Path.of("config", "visionbrowser.json");
 
@@ -63,6 +67,10 @@ final class VisionSettings {
             if (o.has("lyricsLifeSeconds")) lyricsLifeSeconds = clamp(o.get("lyricsLifeSeconds").getAsFloat(), 2f, 20f);
             if (o.has("lyricsMaxLines")) lyricsMaxLines = Math.max(1, Math.min(8, o.get("lyricsMaxLines").getAsInt()));
             if (o.has("lyricsFontSize")) lyricsFontSize = Math.max(24, Math.min(96, o.get("lyricsFontSize").getAsInt()));
+            if (o.has("lyricsPlayerRelative")) lyricsPlayerRelative = o.get("lyricsPlayerRelative").getAsBoolean();
+            if (o.has("lyricsFollowRotation")) lyricsFollowRotation = o.get("lyricsFollowRotation").getAsBoolean();
+            if (o.has("lyricsVerticalOffset")) lyricsVerticalOffset = clamp(o.get("lyricsVerticalOffset").getAsFloat(), -2f, 5f);
+            if (o.has("lyricsHorizontalOffset")) lyricsHorizontalOffset = clamp(o.get("lyricsHorizontalOffset").getAsFloat(), -5f, 5f);
         } catch (Throwable ignored) {
             // a broken file simply leaves the defaults in place
         }
@@ -92,6 +100,10 @@ final class VisionSettings {
             o.addProperty("lyricsLifeSeconds", lyricsLifeSeconds);
             o.addProperty("lyricsMaxLines", lyricsMaxLines);
             o.addProperty("lyricsFontSize", lyricsFontSize);
+            o.addProperty("lyricsPlayerRelative", lyricsPlayerRelative);
+            o.addProperty("lyricsFollowRotation", lyricsFollowRotation);
+            o.addProperty("lyricsVerticalOffset", lyricsVerticalOffset);
+            o.addProperty("lyricsHorizontalOffset", lyricsHorizontalOffset);
             Files.createDirectories(FILE.getParent());
             Files.writeString(FILE, o.toString(), StandardCharsets.UTF_8);
         } catch (Throwable ignored) {

@@ -42,6 +42,7 @@ final class Lyrics3D {
         float scale = VisionSettings.lyricsScale;
         double smoothX, smoothY, smoothZ, smoothYaw, smoothPitch;
         boolean smoothInitialized;
+        long retireAt = -1L;
         int renderRevision;
         float lift, liftTarget;
         volatile Identifier texture;
@@ -79,7 +80,8 @@ final class Lyrics3D {
             Vec3 cp = cam.position();
             double yaw = Math.toRadians(cam.yRot()), pitch = Math.toRadians(cam.xRot());
             double lx = -Math.sin(yaw) * Math.cos(pitch), ly = -Math.sin(pitch), lz = Math.cos(yaw) * Math.cos(pitch);
-            for (Line old : lines) old.liftTarget += 1.0f;
+            long now = System.currentTimeMillis();
+            for (Line old : lines) { old.liftTarget += 1.0f; old.retireAt = now + 650L; }
             // Offset from the player's view. In player-relative mode the render loop recalculates this anchor each frame.
             double rxs = -Math.cos(yaw), rzs = -Math.sin(yaw);
             double forward = VisionSettings.lyricsWorldDistance;
@@ -277,7 +279,8 @@ final class Lyrics3D {
                 l.lift += (l.liftTarget - l.lift) * (1f - (float) Math.exp(-dt * 5f));
                 long age = now - l.born;
                 float alpha = Math.min(1f, age / (float) FADE_IN_MS) * Math.max(0f, Math.min(1f, (lifeMs() - age) / (float) FADE_OUT_MS));
-                alpha *= Math.max(0.3f, 1f - 0.35f * l.liftTarget);
+                alpha *= Math.max(0f, 1f - 0.35f * l.liftTarget);
+                if (l.retireAt >= 0L) alpha *= Math.max(0f, Math.min(1f, (l.retireAt - now) / 650f));
                 double useYaw = VisionSettings.lyricsFollowRotation ? yaw : l.spawnYaw;
                 double usePitch = VisionSettings.lyricsFollowRotation ? pitch : l.spawnPitch;
                 double fx = -Math.sin(useYaw) * Math.cos(usePitch), fy = -Math.sin(usePitch), fz = Math.cos(useYaw) * Math.cos(usePitch);
@@ -328,7 +331,7 @@ final class Lyrics3D {
                     sy[i] = (0.5f - n[1] * signY * 0.5f) * gh;
                     sw[i] = n[2];
                 }
-                if (visible) drawStrips(g, tex, l.texW, l.texH, sx, sy, sw, gw, a255);
+                if (visible) drawStrips(g, tex, l.texW, l.texH, sx, sy, sw, gw, gh, a255);
             }
             return true;
         } catch (Throwable error) {
@@ -341,7 +344,7 @@ final class Lyrics3D {
         Iterator<Line> it = lines.iterator();
         while (it.hasNext()) {
             Line l = it.next();
-            if (now - l.born > lifeMs() || l.failed) {
+            if (now - l.born > lifeMs() || l.failed || (l.retireAt >= 0L && now >= l.retireAt)) {
                 release(l);
                 it.remove();
             }
@@ -374,7 +377,7 @@ final class Lyrics3D {
     }
 
     private static void drawStrips(GuiGraphicsExtractor g, Identifier tex, int tw, int th,
-                                   float[] sx, float[] sy, float[] sw, int gw, int alpha) {
+                                   float[] sx, float[] sy, float[] sw, int gw, int gh, int alpha) {
         if (Math.abs(sx[1] - sx[0]) < 1f || Math.abs(sx[2] - sx[3]) < 1f) return;
         if (sx[1] < sx[0] || sx[2] < sx[3]) return;
         float left = Math.max(sx[0], sx[3]), right = Math.min(sx[1], sx[2]);
@@ -386,11 +389,15 @@ final class Lyrics3D {
             float tB = Math.max(0f, Math.min(1f, (xc - sx[3]) / (sx[2] - sx[3])));
             float yTop = sy[0] + (sy[1] - sy[0]) * tT;
             float yBot = sy[3] + (sy[2] - sy[3]) * tB;
-            int top = Math.round(yTop), height = Math.round(yBot) - top;
-            if (height < 1) continue;
+            if (yBot <= yTop) continue;
+            float clippedTop = Math.max(0f, yTop), clippedBottom = Math.min((float) gh, yBot);
+            if (clippedBottom <= clippedTop) continue;
+            float v0 = ((clippedTop - yTop) / (yBot - yTop)) * th;
+            float vHeight = ((clippedBottom - clippedTop) / (yBot - yTop)) * th;
+            int top = Math.round(clippedTop), height = Math.max(1, Math.round(clippedBottom) - top);
             float u0 = uAt(x, sx, sw), u1 = uAt(x + 1, sx, sw);
             int uWidth = Math.max(1, Math.round((u1 - u0) * tw));
-            g.blit(RenderPipelines.GUI_TEXTURED, tex, x, top, u0 * tw, 0f, 1, height, uWidth, th, tw, th, color);
+            g.blit(RenderPipelines.GUI_TEXTURED, tex, x, top, u0 * tw, v0, 1, height, uWidth, vHeight, tw, th, color);
         }
     }
 }

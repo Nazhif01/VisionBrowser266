@@ -286,7 +286,7 @@ final class Lyrics3D {
                 double fx = -Math.sin(useYaw) * Math.cos(usePitch), fy = -Math.sin(usePitch), fz = Math.cos(useYaw) * Math.cos(usePitch);
                 double rightX = -Math.cos(useYaw), rightZ = -Math.sin(useYaw);
                 double cx = l.cx, cy = l.cy, cz = l.cz;
-                double lineRx = l.rx, lineRz = l.rz, lineNx = l.nx, lineNz = l.nz;
+                double orientYaw = useYaw, orientPitch = usePitch;
                 if (VisionSettings.lyricsPlayerRelative) {
                     double targetX = cp.x + fx * l.forward + rightX * l.side;
                     double targetY = cp.y + fy * l.forward + l.up;
@@ -305,15 +305,25 @@ final class Lyrics3D {
                         l.smoothYaw += wrapRadians(useYaw - l.smoothYaw) * blend;
                         l.smoothPitch += (usePitch - l.smoothPitch) * blend;
                     }
-                    double renderYaw = l.smoothYaw, renderPitch = l.smoothPitch;
-                    double renderRightX = -Math.cos(renderYaw), renderRightZ = -Math.sin(renderYaw);
                     cx = l.smoothX; cy = l.smoothY; cz = l.smoothZ;
-                    lineRx = renderRightX; lineRz = renderRightZ;
-                    lineNx = Math.sin(renderYaw); lineNz = -Math.cos(renderYaw);
+                    orientYaw = l.smoothYaw;
+                    orientPitch = l.smoothPitch;
                 }
+                // Build the complete camera basis, including pitch. The previous quad used
+                // world-up for its vertical axis, which made it feel like a flat 2D label
+                // when looking up or down. This basis keeps the lyric plane truly 3D.
+                double orientFx = -Math.sin(orientYaw) * Math.cos(orientPitch);
+                double orientFy = -Math.sin(orientPitch);
+                double orientFz = Math.cos(orientYaw) * Math.cos(orientPitch);
+                double lineRightX = -Math.cos(orientYaw), lineRightZ = -Math.sin(orientYaw);
+                double lineUpX = -Math.sin(orientYaw) * Math.sin(orientPitch);
+                double lineUpY = Math.cos(orientPitch);
+                double lineUpZ = Math.cos(orientYaw) * Math.sin(orientPitch);
+                double lineNormalX = -orientFx, lineNormalY = -orientFy, lineNormalZ = -orientFz;
                 l.scale = VisionSettings.lyricsScale;
                 cy += l.lift;
-                if ((cp.x - cx) * lineNx + (cp.z - cz) * lineNz <= 0) continue; // seen from behind
+                // In fixed-orientation mode the quad has a real front and back. In billboard
+                // mode its normal follows the camera, so it remains readable through a full turn.
                 double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
                 alpha *= (float) Math.max(0, Math.min(1, (dist - 0.8) / 1.5)) * (float) Math.max(0, Math.min(1, (64 - dist) / 24));
                 int a255 = Math.round(alpha * 255f);
@@ -327,14 +337,16 @@ final class Lyrics3D {
                 float low = 0f, high = 1f;
                 for (int fit = 0; fit < 18; fit++) {
                     float candidate = (low + high) * 0.5f;
-                    if (projectQuad(vp, cp, cx, cy, cz, lineRx, lineRz, lineNx, lineNz,
+                    if (projectQuad(vp, cp, cx, cy, cz, lineRightX, lineRightZ,
+                            lineUpX, lineUpY, lineUpZ, lineNormalX, lineNormalY, lineNormalZ,
                             hw * candidate, hh * candidate, gw, gh, signX, signY, sx, sy, sw)) {
                         low = candidate;
                     } else {
                         high = candidate;
                     }
                 }
-                if (low > 0.001f && projectQuad(vp, cp, cx, cy, cz, lineRx, lineRz, lineNx, lineNz,
+                if (low > 0.001f && projectQuad(vp, cp, cx, cy, cz, lineRightX, lineRightZ,
+                        lineUpX, lineUpY, lineUpZ, lineNormalX, lineNormalY, lineNormalZ,
                         hw * low, hh * low, gw, gh, signX, signY, sx, sy, sw)) {
                     drawStrips(g, tex, l.texW, l.texH, sx, sy, sw, gw, gh, a255);
                 }
@@ -347,7 +359,9 @@ final class Lyrics3D {
     }
 
     private static boolean projectQuad(Matrix4f vp, Vec3 camera, double cx, double cy, double cz,
-                                       double rightX, double rightZ, double normalX, double normalZ,
+                                       double rightX, double rightZ,
+                                       double upX, double upY, double upZ,
+                                       double normalX, double normalY, double normalZ,
                                        float hw, float hh, int gw, int gh, float signX, float signY,
                                        float[] sx, float[] sy, float[] sw) {
         float tiltDepth = hh * 0.18f;
@@ -355,9 +369,9 @@ final class Lyrics3D {
         for (int i = 0; i < 4; i++) {
             boolean top = i < 2;
             double depth = top ? -tiltDepth : 0.0;
-            double wx = cx + rightX * corner[i][0] + normalX * depth;
-            double wy = cy + corner[i][1];
-            double wz = cz + rightZ * corner[i][0] + normalZ * depth;
+            double wx = cx + rightX * corner[i][0] + upX * corner[i][1] + normalX * depth;
+            double wy = cy + upY * corner[i][1] + normalY * depth;
+            double wz = cz + rightZ * corner[i][0] + upZ * corner[i][1] + normalZ * depth;
             float[] n = ndc(vp, wx - camera.x, wy - camera.y, wz - camera.z);
             if (n[2] < 0.1f) return false;
             sx[i] = (n[0] * signX * 0.5f + 0.5f) * gw;

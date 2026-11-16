@@ -243,7 +243,11 @@ final class ChatPanel {
     }
     private static void finishDrag() {
         Id was = dragging; dragging = null; dragItem = null; VisionSettings.save();
-        if (was != Id.FLOAT_SIZE && was != Id.ISLAND_SIZE) FloatingLyrics.modeChanged();
+        if (was == Id.G_INTENSITY || was == Id.G_RADIUS || was == Id.G_FONTSIZE) {
+            Lyrics3D.refreshAppearance();
+        } else if (was != Id.FLOAT_SIZE && was != Id.ISLAND_SIZE) {
+            FloatingLyrics.modeChanged();
+        }
     }
     private static void cycleMode(int dir) {
         VisionSettings.lyricsMode = Math.floorMod(VisionSettings.lyricsMode + dir, MODES.length);

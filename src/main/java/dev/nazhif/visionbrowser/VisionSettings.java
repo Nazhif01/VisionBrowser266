@@ -20,24 +20,12 @@ final class VisionSettings {
     static volatile float lyricsDistance = 18f;       // 3D text: blocks in front of the player (6..40)
     static volatile float lyricsSpread = 1.0f;        // 3D text: how far left/right lines alternate (0..1.5)
     static volatile boolean lyricsAlbumColor = true;  // active lyric takes the album-cover colour
+    static volatile int lyricsLayout = 0;             // 3D text layout: 0 = scatter (chunks across the sky), 1 = single block, 2 = word by word
+    static volatile int lyricsOffsetMs = 0;           // lyric timing offset in ms (+ = lyrics earlier), for songs whose lyrics are slightly off
+    static volatile boolean lyricsUppercase = true;   // 3D text in capitals
     static volatile int hudPosition = 0;              // 0 above crosshair, 1 centre, 2 top, 3 bottom, 4 top-left, 5 top-right
     static volatile int hudLines = 3;                 // 2..6 lines in the HUD panel
     static volatile boolean hudPanel = false;         // dark panel behind the HUD lyrics
-    static volatile boolean lyricsWordByWord = false;
-    static volatile float lyricsWordSpeed = 0.22f;
-    static volatile float glowIntensity = 2.6f;
-    static volatile float glowRadius = 8f;
-    static volatile float lyricsWorldDistance = 7f;
-    static volatile float lyricsLifeSeconds = 7.5f;
-    static volatile int lyricsMaxLines = 3;
-    static volatile int lyricsFontSize = 48;
-    static volatile boolean lyricsPlayerRelative = false;
-    static volatile boolean lyricsFollowRotation = true;
-    static volatile float lyricsVerticalOffset = 1.4f;
-    static volatile float lyricsHorizontalOffset = 0f;
-    static volatile boolean lyricsGlowRandomPosition = true;
-    static volatile float lyricsGlowRandomRange = 3.5f;
-    static volatile float lyricsGlowSmoothing = 0.55f;
 
     private static final Path FILE = Path.of("config", "visionbrowser.json");
 
@@ -52,31 +40,19 @@ final class VisionSettings {
             if (o.has("floatWidth")) floatWidth = clamp(o.get("floatWidth").getAsFloat(), 0.6f, 7f);
             if (o.has("islandScale")) islandScale = clamp(o.get("islandScale").getAsFloat(), 0.6f, 1.8f);
             if (o.has("lyricsSide")) lyricsSide = clamp(o.get("lyricsSide").getAsFloat(), -1f, 1f);
-            if (o.has("lyricsScale")) lyricsScale = clamp(o.get("lyricsScale").getAsFloat(), 0.1f, 1.6f);
+            if (o.has("lyricsScale")) lyricsScale = clamp(o.get("lyricsScale").getAsFloat(), 0.6f, 1.6f);
             if (o.has("lyricsFont")) lyricsFont = o.get("lyricsFont").getAsString();
             if (o.has("floatLocked")) floatLocked = o.get("floatLocked").getAsBoolean();
             if (o.has("lyricsMode")) lyricsMode = Math.max(0, Math.min(2, o.get("lyricsMode").getAsInt()));
             if (o.has("lyricsDistance")) lyricsDistance = clamp(o.get("lyricsDistance").getAsFloat(), 6f, 40f);
             if (o.has("lyricsSpread")) lyricsSpread = clamp(o.get("lyricsSpread").getAsFloat(), 0f, 1.5f);
             if (o.has("lyricsAlbumColor")) lyricsAlbumColor = o.get("lyricsAlbumColor").getAsBoolean();
+            if (o.has("lyricsLayout")) lyricsLayout = Math.max(0, Math.min(2, o.get("lyricsLayout").getAsInt()));
+            if (o.has("lyricsOffsetMs")) lyricsOffsetMs = Math.max(-3000, Math.min(3000, o.get("lyricsOffsetMs").getAsInt()));
+            if (o.has("lyricsUppercase")) lyricsUppercase = o.get("lyricsUppercase").getAsBoolean();
             if (o.has("hudPosition")) hudPosition = Math.max(0, Math.min(5, o.get("hudPosition").getAsInt()));
             if (o.has("hudLines")) hudLines = Math.max(2, Math.min(6, o.get("hudLines").getAsInt()));
             if (o.has("hudPanel")) hudPanel = o.get("hudPanel").getAsBoolean();
-            if (o.has("lyricsWordByWord")) lyricsWordByWord = o.get("lyricsWordByWord").getAsBoolean();
-            if (o.has("lyricsWordSpeed")) lyricsWordSpeed = clamp(o.get("lyricsWordSpeed").getAsFloat(), 0.08f, 0.8f);
-            if (o.has("glowIntensity")) glowIntensity = clamp(o.get("glowIntensity").getAsFloat(), 0f, 5f);
-            if (o.has("glowRadius")) glowRadius = clamp(o.get("glowRadius").getAsFloat(), 2f, 18f);
-            if (o.has("lyricsWorldDistance")) lyricsWorldDistance = clamp(o.get("lyricsWorldDistance").getAsFloat(), 3f, 24f);
-            if (o.has("lyricsLifeSeconds")) lyricsLifeSeconds = clamp(o.get("lyricsLifeSeconds").getAsFloat(), 2f, 20f);
-            if (o.has("lyricsMaxLines")) lyricsMaxLines = Math.max(1, Math.min(8, o.get("lyricsMaxLines").getAsInt()));
-            if (o.has("lyricsFontSize")) lyricsFontSize = Math.max(12, Math.min(96, o.get("lyricsFontSize").getAsInt()));
-            if (o.has("lyricsPlayerRelative")) lyricsPlayerRelative = o.get("lyricsPlayerRelative").getAsBoolean();
-            if (o.has("lyricsFollowRotation")) lyricsFollowRotation = o.get("lyricsFollowRotation").getAsBoolean();
-            if (o.has("lyricsVerticalOffset")) lyricsVerticalOffset = clamp(o.get("lyricsVerticalOffset").getAsFloat(), -2f, 5f);
-            if (o.has("lyricsHorizontalOffset")) lyricsHorizontalOffset = clamp(o.get("lyricsHorizontalOffset").getAsFloat(), -5f, 5f);
-            if (o.has("lyricsGlowRandomPosition")) lyricsGlowRandomPosition = o.get("lyricsGlowRandomPosition").getAsBoolean();
-            if (o.has("lyricsGlowRandomRange")) lyricsGlowRandomRange = clamp(o.get("lyricsGlowRandomRange").getAsFloat(), 0f, 8f);
-            if (o.has("lyricsGlowSmoothing")) lyricsGlowSmoothing = clamp(o.get("lyricsGlowSmoothing").getAsFloat(), 0f, 1f);
         } catch (Throwable ignored) {
             // a broken file simply leaves the defaults in place
         }
@@ -95,24 +71,12 @@ final class VisionSettings {
             o.addProperty("lyricsDistance", lyricsDistance);
             o.addProperty("lyricsSpread", lyricsSpread);
             o.addProperty("lyricsAlbumColor", lyricsAlbumColor);
+            o.addProperty("lyricsLayout", lyricsLayout);
+            o.addProperty("lyricsOffsetMs", lyricsOffsetMs);
+            o.addProperty("lyricsUppercase", lyricsUppercase);
             o.addProperty("hudPosition", hudPosition);
             o.addProperty("hudLines", hudLines);
             o.addProperty("hudPanel", hudPanel);
-            o.addProperty("lyricsWordByWord", lyricsWordByWord);
-            o.addProperty("lyricsWordSpeed", lyricsWordSpeed);
-            o.addProperty("glowIntensity", glowIntensity);
-            o.addProperty("glowRadius", glowRadius);
-            o.addProperty("lyricsWorldDistance", lyricsWorldDistance);
-            o.addProperty("lyricsLifeSeconds", lyricsLifeSeconds);
-            o.addProperty("lyricsMaxLines", lyricsMaxLines);
-            o.addProperty("lyricsFontSize", lyricsFontSize);
-            o.addProperty("lyricsPlayerRelative", lyricsPlayerRelative);
-            o.addProperty("lyricsFollowRotation", lyricsFollowRotation);
-            o.addProperty("lyricsVerticalOffset", lyricsVerticalOffset);
-            o.addProperty("lyricsHorizontalOffset", lyricsHorizontalOffset);
-            o.addProperty("lyricsGlowRandomPosition", lyricsGlowRandomPosition);
-            o.addProperty("lyricsGlowRandomRange", lyricsGlowRandomRange);
-            o.addProperty("lyricsGlowSmoothing", lyricsGlowSmoothing);
             Files.createDirectories(FILE.getParent());
             Files.writeString(FILE, o.toString(), StandardCharsets.UTF_8);
         } catch (Throwable ignored) {

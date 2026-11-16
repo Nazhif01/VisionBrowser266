@@ -23,6 +23,14 @@ final class VisionSettings {
     static volatile int hudPosition = 0;              // 0 above crosshair, 1 centre, 2 top, 3 bottom, 4 top-left, 5 top-right
     static volatile int hudLines = 3;                 // 2..6 lines in the HUD panel
     static volatile boolean hudPanel = false;         // dark panel behind the HUD lyrics
+    static volatile boolean lyricsWordByWord = false;
+    static volatile float lyricsWordSpeed = 0.22f;
+    static volatile float glowIntensity = 2.6f;
+    static volatile float glowRadius = 8f;
+    static volatile float lyricsWorldDistance = 7f;
+    static volatile float lyricsLifeSeconds = 7.5f;
+    static volatile int lyricsMaxLines = 3;
+    static volatile int lyricsFontSize = 48;
 
     private static final Path FILE = Path.of("config", "visionbrowser.json");
 
@@ -47,6 +55,14 @@ final class VisionSettings {
             if (o.has("hudPosition")) hudPosition = Math.max(0, Math.min(5, o.get("hudPosition").getAsInt()));
             if (o.has("hudLines")) hudLines = Math.max(2, Math.min(6, o.get("hudLines").getAsInt()));
             if (o.has("hudPanel")) hudPanel = o.get("hudPanel").getAsBoolean();
+            if (o.has("lyricsWordByWord")) lyricsWordByWord = o.get("lyricsWordByWord").getAsBoolean();
+            if (o.has("lyricsWordSpeed")) lyricsWordSpeed = clamp(o.get("lyricsWordSpeed").getAsFloat(), 0.08f, 0.8f);
+            if (o.has("glowIntensity")) glowIntensity = clamp(o.get("glowIntensity").getAsFloat(), 0f, 5f);
+            if (o.has("glowRadius")) glowRadius = clamp(o.get("glowRadius").getAsFloat(), 2f, 18f);
+            if (o.has("lyricsWorldDistance")) lyricsWorldDistance = clamp(o.get("lyricsWorldDistance").getAsFloat(), 3f, 24f);
+            if (o.has("lyricsLifeSeconds")) lyricsLifeSeconds = clamp(o.get("lyricsLifeSeconds").getAsFloat(), 2f, 20f);
+            if (o.has("lyricsMaxLines")) lyricsMaxLines = Math.max(1, Math.min(8, o.get("lyricsMaxLines").getAsInt()));
+            if (o.has("lyricsFontSize")) lyricsFontSize = Math.max(24, Math.min(96, o.get("lyricsFontSize").getAsInt()));
         } catch (Throwable ignored) {
             // a broken file simply leaves the defaults in place
         }
@@ -68,6 +84,14 @@ final class VisionSettings {
             o.addProperty("hudPosition", hudPosition);
             o.addProperty("hudLines", hudLines);
             o.addProperty("hudPanel", hudPanel);
+            o.addProperty("lyricsWordByWord", lyricsWordByWord);
+            o.addProperty("lyricsWordSpeed", lyricsWordSpeed);
+            o.addProperty("glowIntensity", glowIntensity);
+            o.addProperty("glowRadius", glowRadius);
+            o.addProperty("lyricsWorldDistance", lyricsWorldDistance);
+            o.addProperty("lyricsLifeSeconds", lyricsLifeSeconds);
+            o.addProperty("lyricsMaxLines", lyricsMaxLines);
+            o.addProperty("lyricsFontSize", lyricsFontSize);
             Files.createDirectories(FILE.getParent());
             Files.writeString(FILE, o.toString(), StandardCharsets.UTF_8);
         } catch (Throwable ignored) {

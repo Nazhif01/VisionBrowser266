@@ -14,7 +14,7 @@ import java.util.Locale;
 final class ChatPanel {
     private enum Id {
         TAB_WINDOW, TAB_ISLAND, TAB_LYRICS, PAGE_GENERAL, PAGE_TEXT, PAGE_GLOW, PAGE_MOTION, PAGE_HUD,
-        FLOAT_TOGGLE, FLOAT_LOCK, FLOAT_SIZE, ISLAND_SIZE, LYR_TOGGLE, MODE_PREV, MODE_NEXT,
+        FLOAT_TOGGLE, FLOAT_LOCK, FLOAT_BILLBOARD, FLOAT_SIZE, ISLAND_SIZE, LYR_TOGGLE, MODE_PREV, MODE_NEXT,
         WORD_TOGGLE, COLOR_TOGGLE, PANEL_TOGGLE, FONT_PREV, FONT_NEXT, POS_PREV, POS_NEXT,
         LINES_PREV, LINES_NEXT, MAXLINES_PREV, MAXLINES_NEXT, L_SIZE, L_DIST, L_SPREAD,
         L_SIDE, WORD_SPEED, G_INTENSITY, G_RADIUS, G_DISTANCE, G_LIFE, G_FONTSIZE,
@@ -71,6 +71,8 @@ final class ChatPanel {
         if (tab == 0) {
             a.add(new Item(Id.FLOAT_TOGGLE, x, y, half, 20));
             a.add(new Item(Id.FLOAT_LOCK, x + half + 6, y, half, 20));
+            y += 26;
+            a.add(new Item(Id.FLOAT_BILLBOARD, x, y, inner, 20));
             y += 30; y = slider(a, Id.FLOAT_SIZE, x, y, inner);
         } else if (tab == 1) {
             y = slider(a, Id.ISLAND_SIZE, x, y, inner);
@@ -214,6 +216,7 @@ final class ChatPanel {
                 case TAB_WINDOW -> tab = 0; case TAB_ISLAND -> tab = 1; case TAB_LYRICS -> tab = 2;
                 case PAGE_GENERAL -> page = 0; case PAGE_TEXT -> page = 1; case PAGE_GLOW -> page = 2; case PAGE_MOTION -> page = 3; case PAGE_HUD -> page = 4;
                 case FLOAT_TOGGLE -> FloatWindow.toggle(); case FLOAT_LOCK -> FloatWindow.toggleLock();
+                case FLOAT_BILLBOARD -> FloatWindow.toggleBillboard();
                 case LYR_TOGGLE -> FloatingLyrics.toggle();
                 case MODE_PREV -> cycleMode(-1); case MODE_NEXT -> cycleMode(1);
                 case WORD_TOGGLE -> { VisionSettings.lyricsWordByWord = !VisionSettings.lyricsWordByWord; VisionSettings.save(); FloatingLyrics.modeChanged(); }
@@ -277,6 +280,7 @@ final class ChatPanel {
                 case PAGE_HUD -> button(g, font, r, "HUD", hot, page == 4, accent);
                 case FLOAT_TOGGLE -> button(g, font, r, FloatWindow.isEnabled() ? "Floating: On" : "Floating: Off", hot, FloatWindow.isEnabled(), accent);
                 case FLOAT_LOCK -> button(g, font, r, FloatWindow.isLocked() ? "Locked" : "Free", hot, FloatWindow.isLocked(), accent);
+                case FLOAT_BILLBOARD -> button(g, font, r, VisionSettings.floatBillboard ? "Billboard: On" : "Billboard: Off", hot, VisionSettings.floatBillboard, accent);
                 case LYR_TOGGLE -> button(g, font, r, FloatingLyrics.isEnabled() ? "Lyrics: On" : "Lyrics: Off", hot, FloatingLyrics.isEnabled(), accent);
                 case WORD_TOGGLE -> button(g, font, r, VisionSettings.lyricsWordByWord ? "Word: On" : "Word: Off", hot, VisionSettings.lyricsWordByWord, accent);
                 case PLAYER_RELATIVE -> button(g, font, r, VisionSettings.lyricsPlayerRelative ? "Position: Follow" : "Position: Locked", hot, !VisionSettings.lyricsPlayerRelative, accent);

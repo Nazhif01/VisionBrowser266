@@ -34,6 +34,8 @@ final class FloatWindow {
     private static final float distance = 3.0f;
     private static double cx, cy, cz;
     private static boolean poseInit;
+    private static boolean fixedOrientationInit;
+    private static double fixedRightX, fixedRightZ;
     private static long enabledAt, lastNanos, toastUntil;
     private static String toast = "";
     private static volatile String status = "Floating window: off";
@@ -56,6 +58,7 @@ final class FloatWindow {
         enabled = on;
         if (on) {
             poseInit = false;
+            fixedOrientationInit = false;
             enabledAt = System.currentTimeMillis();
             applySize();
             say("Floating window ON (" + (locked ? "locked" : "free") + ")");
@@ -65,6 +68,15 @@ final class FloatWindow {
     }
 
     static void toggle() { setEnabled(!enabled); }
+
+    static boolean isBillboard() { return VisionSettings.floatBillboard; }
+
+    static void toggleBillboard() {
+        VisionSettings.floatBillboard = !VisionSettings.floatBillboard;
+        fixedOrientationInit = false;
+        VisionSettings.save();
+        say(VisionSettings.floatBillboard ? "Window BILLBOARD: on" : "Window BILLBOARD: off");
+    }
 
     static void toggleLock() {
         locked = !locked;
@@ -151,8 +163,24 @@ final class FloatWindow {
             }
             // The window always faces the camera completely (screen-parallel, pitch included), so it never looks squashed when the
             // player looks up or down. right = camera right (horizontal), up = right x forward.
-            double[] right = {rxv, 0, rzv};
-            double[] upv = {-rzv * ly, rzv * lx - rxv * lz, rxv * ly};
+            double[] right;
+            double[] upv;
+            if (VisionSettings.floatBillboard) {
+                // Billboard mode: keep the display parallel to the camera, including pitch.
+                right = new double[]{rxv, 0, rzv};
+                upv = new double[]{-rzv * ly, rzv * lx - rxv * lz, rxv * ly};
+            } else {
+                // Non-billboard mode: capture a world-facing orientation once, then keep it
+                // independent from camera/head rotation while position can still follow the player.
+                if (!fixedOrientationInit) {
+                    double playerYaw = Math.toRadians(mc.player.getYRot());
+                    fixedRightX = -Math.cos(playerYaw);
+                    fixedRightZ = -Math.sin(playerYaw);
+                    fixedOrientationInit = true;
+                }
+                right = new double[]{fixedRightX, 0, fixedRightZ};
+                upv = new double[]{0, 1, 0};
+            }
 
             double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
             float fade = Math.min(1f, (now - enabledAt) / 350f) * (float) Math.max(0, Math.min(1, (dist - 0.5) / 1.0));

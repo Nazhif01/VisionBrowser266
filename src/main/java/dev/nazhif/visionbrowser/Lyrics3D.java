@@ -324,6 +324,8 @@ final class Lyrics3D {
                 cy += l.lift;
                 // In fixed-orientation mode the quad has a real front and back. In billboard
                 // mode its normal follows the camera, so it remains readable through a full turn.
+                if (!VisionSettings.lyricsFollowRotation &&
+                        (cp.x - cx) * lineNormalX + (cp.y - cy) * lineNormalY + (cp.z - cz) * lineNormalZ <= 0) continue;
                 double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
                 alpha *= (float) Math.max(0, Math.min(1, (dist - 0.8) / 1.5)) * (float) Math.max(0, Math.min(1, (64 - dist) / 24));
                 int a255 = Math.round(alpha * 255f);

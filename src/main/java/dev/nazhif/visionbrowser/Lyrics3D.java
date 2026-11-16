@@ -27,9 +27,9 @@ import java.util.List;
  */
 final class Lyrics3D {
     private static final float BLOCKS_PER_PX = 0.012f;
-    private static final float DISTANCE = 7.0f;
-    private static final long LIFE_MS = 7500, FADE_IN_MS = 400, FADE_OUT_MS = 1500;
-    private static final int MAX_LINES = 3, FONT_SIZE = 48, PAD = 28, MAX_TEX_W = 1100;
+    private static final long FADE_IN_MS = 400, FADE_OUT_MS = 1500;
+    private static final int PAD = 28, MAX_TEX_W = 1100;
+    private static long lifeMs() { return Math.round(VisionSettings.lyricsLifeSeconds * 1000f); }
 
     private static final class Line {
         final long born = System.currentTimeMillis();
@@ -75,10 +75,10 @@ final class Lyrics3D {
             for (Line old : lines) old.liftTarget += 1.0f;
             // placed to the SIDE of the view (slider: left .. right) so the lyrics never sit right in front of the player's eyes
             double rxs = -Math.cos(yaw), rzs = -Math.sin(yaw), lat = VisionSettings.lyricsSide * 4.5;
-            Line line = new Line(text, cp.x + lx * DISTANCE + rxs * lat, cp.y + ly * DISTANCE + 0.6, cp.z + lz * DISTANCE + rzs * lat,
+            Line line = new Line(text, cp.x + lx * VisionSettings.lyricsWorldDistance + rxs * lat, cp.y + ly * VisionSettings.lyricsWorldDistance + 0.6, cp.z + lz * VisionSettings.lyricsWorldDistance + rzs * lat,
                     -Math.cos(yaw), -Math.sin(yaw), Math.sin(yaw), -Math.cos(yaw));
             lines.add(line);
-            while (lines.size() > MAX_LINES) release(lines.remove(0));
+            while (lines.size() > VisionSettings.lyricsMaxLines) release(lines.remove(0));
             rasterize(line);
         } catch (Throwable error) {
             status = "3D lyrics: cannot place line (" + error.getClass().getSimpleName() + ")";
@@ -129,7 +129,7 @@ final class Lyrics3D {
     }
 
     private static Rendered renderText(String text, int accentArgb, String family) {
-        int size = FONT_SIZE;
+        int size = VisionSettings.lyricsFontSize;
         java.awt.Font font = LyricFonts.make(family, size, text);
         BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D pg = probe.createGraphics();
@@ -154,7 +154,7 @@ final class Lyrics3D {
 
         float[] a = new float[w * h];
         for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) a[y * w + x] = ((base.getRGB(x, y) >>> 24) & 0xFF) / 255f;
-        float[] blur = boxBlur(boxBlur(boxBlur(a, w, h, 8), w, h, 8), w, h, 8);
+        float[] blur = boxBlur(boxBlur(a, w, h, Math.max(1, Math.round(VisionSettings.glowRadius))), w, h, Math.max(1, Math.round(VisionSettings.glowRadius)));
 
         // glow colour: the cover accent mixed 35% towards white so it stays luminous on dark skies
         int ar = Math.round(((accentArgb >> 16) & 0xFF) * 0.65f + 255 * 0.35f);
@@ -165,7 +165,7 @@ final class Lyrics3D {
             for (int x = 0; x < w; x++) {
                 int i = y * w + x;
                 float ta = a[i];
-                float ga = Math.min(1f, blur[i] * 2.6f);
+                float ga = Math.min(1f, blur[i] * VisionSettings.glowIntensity);
                 float oa = ta + ga * (1f - ta);
                 if (oa <= 0.003f) { out.setPixelABGR(x, y, 0); continue; }
                 float k = ga * (1f - ta);
@@ -243,7 +243,7 @@ final class Lyrics3D {
                 if (tex == null || l.released) continue;
                 l.lift += (l.liftTarget - l.lift) * (1f - (float) Math.exp(-dt * 5f));
                 long age = now - l.born;
-                float alpha = Math.min(1f, age / (float) FADE_IN_MS) * Math.max(0f, Math.min(1f, (LIFE_MS - age) / (float) FADE_OUT_MS));
+                float alpha = Math.min(1f, age / (float) FADE_IN_MS) * Math.max(0f, Math.min(1f, (lifeMs() - age) / (float) FADE_OUT_MS));
                 alpha *= Math.max(0.3f, 1f - 0.35f * l.liftTarget);
                 double cx = l.cx, cy = l.cy + l.lift, cz = l.cz;
                 if ((cp.x - cx) * l.nx + (cp.z - cz) * l.nz <= 0) continue; // seen from behind
@@ -277,7 +277,7 @@ final class Lyrics3D {
         Iterator<Line> it = lines.iterator();
         while (it.hasNext()) {
             Line l = it.next();
-            if (now - l.born > LIFE_MS || l.failed) {
+            if (now - l.born > lifeMs() || l.failed) {
                 release(l);
                 it.remove();
             }

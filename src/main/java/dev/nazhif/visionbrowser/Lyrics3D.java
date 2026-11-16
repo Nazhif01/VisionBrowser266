@@ -394,10 +394,12 @@ final class Lyrics3D {
             if (clippedBottom <= clippedTop) continue;
             float v0 = ((clippedTop - yTop) / (yBot - yTop)) * th;
             float vHeight = ((clippedBottom - clippedTop) / (yBot - yTop)) * th;
+            int sourceY = Math.max(0, Math.min(th - 1, Math.round(v0)));
+            int sourceHeight = Math.max(1, Math.min(th - sourceY, Math.round(vHeight)));
             int top = Math.round(clippedTop), height = Math.max(1, Math.round(clippedBottom) - top);
             float u0 = uAt(x, sx, sw), u1 = uAt(x + 1, sx, sw);
             int uWidth = Math.max(1, Math.round((u1 - u0) * tw));
-            g.blit(RenderPipelines.GUI_TEXTURED, tex, x, top, u0 * tw, v0, 1, height, uWidth, vHeight, tw, th, color);
+            g.blit(RenderPipelines.GUI_TEXTURED, tex, x, top, u0 * tw, sourceY, 1, height, uWidth, sourceHeight, tw, th, color);
         }
     }
 }

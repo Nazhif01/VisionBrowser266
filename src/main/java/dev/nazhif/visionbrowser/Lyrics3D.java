@@ -85,6 +85,11 @@ final class Lyrics3D {
         }
     }
 
+    static void refreshAppearance() {
+        // Recreate the active line with the latest font and glow settings on the next HUD frame.
+        clear();
+    }
+
     static void clear() {
         for (Line l : lines) release(l);
         lines.clear();

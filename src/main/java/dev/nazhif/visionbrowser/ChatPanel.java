@@ -17,7 +17,8 @@ final class ChatPanel {
         FLOAT_TOGGLE, FLOAT_LOCK, FLOAT_SIZE, ISLAND_SIZE, LYR_TOGGLE, MODE_PREV, MODE_NEXT,
         WORD_TOGGLE, COLOR_TOGGLE, PANEL_TOGGLE, FONT_PREV, FONT_NEXT, POS_PREV, POS_NEXT,
         LINES_PREV, LINES_NEXT, MAXLINES_PREV, MAXLINES_NEXT, L_SIZE, L_DIST, L_SPREAD,
-        L_SIDE, WORD_SPEED, G_INTENSITY, G_RADIUS, G_DISTANCE, G_LIFE, G_FONTSIZE
+        L_SIDE, WORD_SPEED, G_INTENSITY, G_RADIUS, G_DISTANCE, G_LIFE, G_FONTSIZE,
+        PLAYER_RELATIVE, FOLLOW_ROTATION, L_HEIGHT, L_HOFFSET
     }
     private record Item(Id id, int x, int y, int w, int h) {
         boolean has(double mx, double my) { return mx >= x && mx < x + w && my >= y && my < y + h; }
@@ -88,9 +89,13 @@ final class ChatPanel {
                     y = slider(a, Id.WORD_SPEED, x, y, inner);
                 }
                 case 1 -> {
+                    a.add(new Item(Id.PLAYER_RELATIVE, x, y, half, 18));
+                    a.add(new Item(Id.FOLLOW_ROTATION, x + half + 6, y, half, 18)); y += 24;
                     y = slider(a, Id.L_DIST, x, y, inner);
                     y = slider(a, Id.L_SPREAD, x, y, inner);
                     y = slider(a, Id.L_SIDE, x, y, inner);
+                    y = slider(a, Id.L_HEIGHT, x, y, inner);
+                    y = slider(a, Id.L_HOFFSET, x, y, inner);
                 }
                 case 2 -> {
                     y = cycle(a, Id.FONT_PREV, Id.FONT_NEXT, x, y, inner);
@@ -129,6 +134,7 @@ final class ChatPanel {
             case FLOAT_SIZE, ISLAND_SIZE, L_SIZE -> 0.6f;
             case L_DIST -> 6f; case L_SPREAD -> 0f; case L_SIDE -> -1f;
             case WORD_SPEED -> 0.08f; case G_INTENSITY -> 0f; case G_RADIUS -> 2f;
+            case L_HEIGHT -> -2f; case L_HOFFSET -> -5f;
             case G_DISTANCE -> 3f; case G_LIFE -> 2f; case G_FONTSIZE -> 24f;
             default -> 0f;
         };
@@ -138,6 +144,7 @@ final class ChatPanel {
             case FLOAT_SIZE -> 7f; case ISLAND_SIZE -> 1.8f; case L_SIZE -> 1.6f;
             case L_DIST -> 40f; case L_SPREAD -> 1.5f; case L_SIDE -> 1f;
             case WORD_SPEED -> 0.8f; case G_INTENSITY -> 5f; case G_RADIUS -> 18f;
+            case L_HEIGHT -> 5f; case L_HOFFSET -> 5f;
             case G_DISTANCE -> 24f; case G_LIFE -> 20f; case G_FONTSIZE -> 96f;
             default -> 1f;
         };
@@ -150,6 +157,7 @@ final class ChatPanel {
             case WORD_SPEED -> VisionSettings.lyricsWordSpeed; case G_INTENSITY -> VisionSettings.glowIntensity;
             case G_RADIUS -> VisionSettings.glowRadius; case G_DISTANCE -> VisionSettings.lyricsWorldDistance;
             case G_LIFE -> VisionSettings.lyricsLifeSeconds; case G_FONTSIZE -> VisionSettings.lyricsFontSize;
+            case L_HEIGHT -> VisionSettings.lyricsVerticalOffset; case L_HOFFSET -> VisionSettings.lyricsHorizontalOffset;
             default -> 0f;
         };
     }
@@ -161,6 +169,7 @@ final class ChatPanel {
             case WORD_SPEED -> VisionSettings.lyricsWordSpeed = v; case G_INTENSITY -> VisionSettings.glowIntensity = v;
             case G_RADIUS -> VisionSettings.glowRadius = v; case G_DISTANCE -> VisionSettings.lyricsWorldDistance = v;
             case G_LIFE -> VisionSettings.lyricsLifeSeconds = v; case G_FONTSIZE -> VisionSettings.lyricsFontSize = Math.round(v);
+            case L_HEIGHT -> VisionSettings.lyricsVerticalOffset = v; case L_HOFFSET -> VisionSettings.lyricsHorizontalOffset = v;
             default -> { }
         }
     }
@@ -170,6 +179,7 @@ final class ChatPanel {
             case L_DIST -> "Text distance"; case L_SPREAD -> "Line spread"; case L_SIDE -> "Horizontal position";
             case WORD_SPEED -> "Word reveal speed"; case G_INTENSITY -> "Glow intensity"; case G_RADIUS -> "Glow radius";
             case G_DISTANCE -> "Glow distance"; case G_LIFE -> "Glow lifetime"; case G_FONTSIZE -> "Glow font size";
+            case L_HEIGHT -> "Vertical offset"; case L_HOFFSET -> "Horizontal offset";
             default -> "";
         };
     }
@@ -182,6 +192,7 @@ final class ChatPanel {
             case G_FONTSIZE, G_RADIUS -> Math.round(v) + " px";
             case L_SPREAD -> Math.round(v * 100) + "%";
             case L_SIDE -> Math.abs(v) < 0.05f ? "Center" : (v > 0 ? "Right " : "Left ") + Math.round(Math.abs(v) * 100) + "%";
+            case L_HEIGHT, L_HOFFSET -> String.format(Locale.ROOT, "%.1f blocks", v);
             default -> Math.round(v * 100) + "%";
         };
     }
@@ -195,6 +206,8 @@ final class ChatPanel {
                 case LYR_TOGGLE -> FloatingLyrics.toggle();
                 case MODE_PREV -> cycleMode(-1); case MODE_NEXT -> cycleMode(1);
                 case WORD_TOGGLE -> { VisionSettings.lyricsWordByWord = !VisionSettings.lyricsWordByWord; VisionSettings.save(); FloatingLyrics.modeChanged(); }
+                case PLAYER_RELATIVE -> { VisionSettings.lyricsPlayerRelative = !VisionSettings.lyricsPlayerRelative; VisionSettings.save(); FloatingLyrics.modeChanged(); }
+                case FOLLOW_ROTATION -> { VisionSettings.lyricsFollowRotation = !VisionSettings.lyricsFollowRotation; VisionSettings.save(); FloatingLyrics.modeChanged(); }
                 case COLOR_TOGGLE -> { VisionSettings.lyricsAlbumColor = !VisionSettings.lyricsAlbumColor; VisionSettings.save(); FloatingLyrics.modeChanged(); }
                 case PANEL_TOGGLE -> { VisionSettings.hudPanel = !VisionSettings.hudPanel; VisionSettings.save(); }
                 case FONT_PREV -> cycleFont(-1); case FONT_NEXT -> cycleFont(1);
@@ -204,7 +217,7 @@ final class ChatPanel {
                 case LINES_NEXT -> { VisionSettings.hudLines = Math.min(6, VisionSettings.hudLines + 1); VisionSettings.save(); }
                 case MAXLINES_PREV -> { VisionSettings.lyricsMaxLines = Math.max(1, VisionSettings.lyricsMaxLines - 1); VisionSettings.save(); }
                 case MAXLINES_NEXT -> { VisionSettings.lyricsMaxLines = Math.min(8, VisionSettings.lyricsMaxLines + 1); VisionSettings.save(); }
-                case FLOAT_SIZE, ISLAND_SIZE, L_SIZE, L_DIST, L_SPREAD, L_SIDE, WORD_SPEED, G_INTENSITY, G_RADIUS, G_DISTANCE, G_LIFE, G_FONTSIZE -> {
+                case FLOAT_SIZE, ISLAND_SIZE, L_SIZE, L_DIST, L_SPREAD, L_SIDE, WORD_SPEED, G_INTENSITY, G_RADIUS, G_DISTANCE, G_LIFE, G_FONTSIZE, L_HEIGHT, L_HOFFSET -> {
                     dragging = r.id(); dragItem = r; drag(dragging, dragItem, mx);
                 }
                 default -> { }
@@ -249,6 +262,8 @@ final class ChatPanel {
                 case FLOAT_LOCK -> button(g, font, r, FloatWindow.isLocked() ? "Locked" : "Free", hot, FloatWindow.isLocked(), accent);
                 case LYR_TOGGLE -> button(g, font, r, FloatingLyrics.isEnabled() ? "Lyrics: On" : "Lyrics: Off", hot, FloatingLyrics.isEnabled(), accent);
                 case WORD_TOGGLE -> button(g, font, r, VisionSettings.lyricsWordByWord ? "Word: On" : "Word: Off", hot, VisionSettings.lyricsWordByWord, accent);
+                case PLAYER_RELATIVE -> button(g, font, r, VisionSettings.lyricsPlayerRelative ? "Player: On" : "Player: Off", hot, VisionSettings.lyricsPlayerRelative, accent);
+                case FOLLOW_ROTATION -> button(g, font, r, VisionSettings.lyricsFollowRotation ? "Rotate: On" : "Rotate: Off", hot, VisionSettings.lyricsFollowRotation, accent);
                 case COLOR_TOGGLE -> button(g, font, r, VisionSettings.lyricsAlbumColor ? "Album color" : "White color", hot, VisionSettings.lyricsAlbumColor, accent);
                 case PANEL_TOGGLE -> button(g, font, r, VisionSettings.hudPanel ? "Panel: On" : "Panel: Off", hot, VisionSettings.hudPanel, accent);
                 case MODE_PREV, FONT_PREV, POS_PREV, LINES_PREV, MAXLINES_PREV -> { button(g, font, r, "<", hot, false, accent); prev = r; }
@@ -257,7 +272,7 @@ final class ChatPanel {
                 case POS_NEXT -> cycleLabel(g, font, prev, r, "Position", LyricsHud.POSITIONS[VisionSettings.hudPosition], hot, accent);
                 case LINES_NEXT -> cycleLabel(g, font, prev, r, "HUD lines", String.valueOf(VisionSettings.hudLines), hot, accent);
                 case MAXLINES_NEXT -> cycleLabel(g, font, prev, r, "World lines", String.valueOf(VisionSettings.lyricsMaxLines), hot, accent);
-                case FLOAT_SIZE, ISLAND_SIZE, L_SIZE, L_DIST, L_SPREAD, L_SIDE, WORD_SPEED, G_INTENSITY, G_RADIUS, G_DISTANCE, G_LIFE, G_FONTSIZE ->
+                case FLOAT_SIZE, ISLAND_SIZE, L_SIZE, L_DIST, L_SPREAD, L_SIDE, WORD_SPEED, G_INTENSITY, G_RADIUS, G_DISTANCE, G_LIFE, G_FONTSIZE, L_HEIGHT, L_HOFFSET ->
                     slider(g, font, r, caption(r.id()), valueText(r.id()), (get(r.id()) - min(r.id())) / (max(r.id()) - min(r.id())), hot, accent);
                 default -> { }
             }

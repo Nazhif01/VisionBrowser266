@@ -21,6 +21,7 @@ final class FloatingLyrics {
     private static volatile boolean enabled = true;
     private static volatile String requestedTrack = "";
     private static final AtomicLong requestId = new AtomicLong();
+    private static final double VOCAL_SYNC_DELAY_SECONDS = 0.35;
 
     private FloatingLyrics() { }
 
@@ -115,10 +116,15 @@ final class FloatingLyrics {
         double position = VisionMediaBridge.positionSeconds();
         int active = -1;
         for (int i = 0; i < current.size(); i++) {
-            if (current.get(i).time() <= position) active = i;
+            if (current.get(i).time() <= position - VOCAL_SYNC_DELAY_SECONDS) active = i;
             else break;
         }
-        if (active < 0) active = 0;
+        // Do not show the first lyric before its timestamp plus a short vocal-synchronization buffer.
+        if (active < 0) {
+            Lyrics3D.clear();
+            NameTagLyrics3D.clear();
+            return;
+        }
         String key = song + "#" + active;
 
         if (mode == VisionSettings.MODE_HUD) {

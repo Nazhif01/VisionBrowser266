@@ -24,7 +24,7 @@ final class ChatPanel {
         boolean has(double mx, double my) { return mx >= x && mx < x + w && my >= y && my < y + h; }
     }
     private record Layout(List<Item> items, int x, int y, int height) { }
-    private static final int W = 224;
+    private static final int W = 300;
     private static final String[] MODES = {"3D Text", "3D Glow", "HUD"};
     private static int tab = 2, page = 0;
     private static Id dragging;
@@ -67,7 +67,7 @@ final class ChatPanel {
         a.add(new Item(Id.TAB_WINDOW, x, 0, tabW, 18));
         a.add(new Item(Id.TAB_ISLAND, x + tabW + 4, 0, tabW, 18));
         a.add(new Item(Id.TAB_LYRICS, x + 2 * (tabW + 4), 0, tabW, 18));
-        int y = 32, half = (inner - 6) / 2;
+        int y = 54, half = (inner - 6) / 2;
         if (tab == 0) {
             a.add(new Item(Id.FLOAT_TOGGLE, x, y, half, 20));
             a.add(new Item(Id.FLOAT_LOCK, x + half + 6, y, half, 20));
@@ -270,17 +270,17 @@ final class ChatPanel {
                 case TAB_WINDOW -> button(g, font, r, "Window", hot, tab == 0, accent);
                 case TAB_ISLAND -> button(g, font, r, "Island", hot, tab == 1, accent);
                 case TAB_LYRICS -> button(g, font, r, "Lyrics", hot, tab == 2, accent);
-                case PAGE_GENERAL -> button(g, font, r, "Main", hot, page == 0, accent);
-                case PAGE_TEXT -> button(g, font, r, "3D", hot, page == 1, accent);
-                case PAGE_GLOW -> button(g, font, r, "Glow", hot, page == 2, accent);
-                case PAGE_MOTION -> button(g, font, r, "Move", hot, page == 3, accent);
+                case PAGE_GENERAL -> button(g, font, r, "Basics", hot, page == 0, accent);
+                case PAGE_TEXT -> button(g, font, r, "3D Text", hot, page == 1, accent);
+                case PAGE_GLOW -> button(g, font, r, "3D Glow", hot, page == 2, accent);
+                case PAGE_MOTION -> button(g, font, r, "Motion", hot, page == 3, accent);
                 case PAGE_HUD -> button(g, font, r, "HUD", hot, page == 4, accent);
                 case FLOAT_TOGGLE -> button(g, font, r, FloatWindow.isEnabled() ? "Floating: On" : "Floating: Off", hot, FloatWindow.isEnabled(), accent);
                 case FLOAT_LOCK -> button(g, font, r, FloatWindow.isLocked() ? "Locked" : "Free", hot, FloatWindow.isLocked(), accent);
                 case LYR_TOGGLE -> button(g, font, r, FloatingLyrics.isEnabled() ? "Lyrics: On" : "Lyrics: Off", hot, FloatingLyrics.isEnabled(), accent);
                 case WORD_TOGGLE -> button(g, font, r, VisionSettings.lyricsWordByWord ? "Word: On" : "Word: Off", hot, VisionSettings.lyricsWordByWord, accent);
-                case PLAYER_RELATIVE -> button(g, font, r, VisionSettings.lyricsPlayerRelative ? "Player: On" : "Player: Off", hot, VisionSettings.lyricsPlayerRelative, accent);
-                case FOLLOW_ROTATION -> button(g, font, r, VisionSettings.lyricsFollowRotation ? "Rotate: On" : "Rotate: Off", hot, VisionSettings.lyricsFollowRotation, accent);
+                case PLAYER_RELATIVE -> button(g, font, r, VisionSettings.lyricsPlayerRelative ? "Position: Follow" : "Position: Locked", hot, !VisionSettings.lyricsPlayerRelative, accent);
+                case FOLLOW_ROTATION -> button(g, font, r, VisionSettings.lyricsFollowRotation ? "Billboard: On" : "Billboard: Off", hot, VisionSettings.lyricsFollowRotation, accent);
                 case G_RANDOM_TOGGLE -> button(g, font, r, VisionSettings.lyricsGlowRandomPosition ? "Random spawn: On" : "Random spawn: Off", hot, VisionSettings.lyricsGlowRandomPosition, accent);
                 case COLOR_TOGGLE -> button(g, font, r, VisionSettings.lyricsAlbumColor ? "Album color" : "White color", hot, VisionSettings.lyricsAlbumColor, accent);
                 case PANEL_TOGGLE -> button(g, font, r, VisionSettings.hudPanel ? "Panel: On" : "Panel: Off", hot, VisionSettings.hudPanel, accent);
@@ -296,6 +296,22 @@ final class ChatPanel {
             }
         }
         if (tab == 2) {
+            String section = switch (page) {
+                case 0 -> "General lyric controls";
+                case 1 -> "3D Text settings";
+                case 2 -> "3D Glow appearance";
+                case 3 -> "Billboard and position behavior";
+                default -> "HUD screen layout";
+            };
+            String detail = switch (page) {
+                case 0 -> "Enable lyrics, choose style, size, and reveal";
+                case 1 -> "Control distance, spread, and text placement";
+                case 2 -> "Configure font, glow strength, lifetime, and lines";
+                case 3 -> "Billboard faces the camera; Locked stays at its world position";
+                default -> "Choose screen position, visible lines, and panel";
+            };
+            g.text(font, section, x, y + 31, 0xFFFFFFFF, true);
+            g.text(font, DynamicIsland.ellipsize(font, detail, inner), x, y + 42, 0xFF9AA4B8, false);
             String status = VisionSettings.lyricsMode == VisionSettings.MODE_TEXT ? NameTagLyrics3D.status() : "Mode: " + MODES[VisionSettings.lyricsMode];
             g.text(font, DynamicIsland.ellipsize(font, status, inner), x, y + l.height() - 14, 0xFF8992A8, false);
         }

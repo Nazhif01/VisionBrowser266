@@ -88,9 +88,11 @@ final class Lyrics3D {
             if (VisionSettings.lyricsGlowRandomPosition) {
                 ThreadLocalRandom random = ThreadLocalRandom.current();
                 double range = VisionSettings.lyricsGlowRandomRange;
-                lat += random.nextDouble(-range, range);
-                forward += random.nextDouble(-range * 0.35, range * 0.35);
-                up += random.nextDouble(-range * 0.22, range * 0.22);
+                if (range > 0.001) {
+                    lat += random.nextDouble(-range, range);
+                    forward += random.nextDouble(-range * 0.35, range * 0.35);
+                    up += random.nextDouble(-range * 0.22, range * 0.22);
+                }
             }
             Line line = new Line(text, cp.x + lx * forward + rxs * lat, cp.y + ly * forward + up, cp.z + lz * forward + rzs * lat,
                     rxs, rzs, Math.sin(yaw), -Math.cos(yaw), forward, lat, up, yaw, pitch);
@@ -344,6 +346,7 @@ final class Lyrics3D {
                 it.remove();
             }
         }
+        while (lines.size() > VisionSettings.lyricsMaxLines) release(lines.remove(0));
     }
 
     /** returns {ndcX, ndcY, clipW} for a point given relative to the camera */

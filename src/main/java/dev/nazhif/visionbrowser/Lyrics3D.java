@@ -81,7 +81,7 @@ final class Lyrics3D {
             double yaw = Math.toRadians(cam.yRot()), pitch = Math.toRadians(cam.xRot());
             double lx = -Math.sin(yaw) * Math.cos(pitch), ly = -Math.sin(pitch), lz = Math.cos(yaw) * Math.cos(pitch);
             long now = System.currentTimeMillis();
-            for (Line old : lines) { old.liftTarget += 1.0f; old.retireAt = now + 650L; }
+            for (Line old : lines) { old.liftTarget += 1.0f; old.retireAt = now + 2400L; }
             // Offset from the player's view. In player-relative mode the render loop recalculates this anchor each frame.
             double rxs = -Math.cos(yaw), rzs = -Math.sin(yaw);
             double forward = VisionSettings.lyricsWorldDistance;
@@ -280,7 +280,7 @@ final class Lyrics3D {
                 long age = now - l.born;
                 float alpha = Math.min(1f, age / (float) FADE_IN_MS) * Math.max(0f, Math.min(1f, (lifeMs() - age) / (float) FADE_OUT_MS));
                 alpha *= Math.max(0f, 1f - 0.35f * l.liftTarget);
-                if (l.retireAt >= 0L) alpha *= Math.max(0f, Math.min(1f, (l.retireAt - now) / 650f));
+                if (l.retireAt >= 0L) alpha *= Math.max(0f, Math.min(1f, (l.retireAt - now) / 2400f));
                 double useYaw = VisionSettings.lyricsFollowRotation ? yaw : l.spawnYaw;
                 double usePitch = VisionSettings.lyricsFollowRotation ? pitch : l.spawnPitch;
                 double fx = -Math.sin(useYaw) * Math.cos(usePitch), fy = -Math.sin(usePitch), fz = Math.cos(useYaw) * Math.cos(usePitch);

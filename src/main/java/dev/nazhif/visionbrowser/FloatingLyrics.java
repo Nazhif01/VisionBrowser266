@@ -121,6 +121,10 @@ final class FloatingLyrics {
         return track.wordAt(lineIndex, positionSeconds);
     }
 
+    static double lyricPosition() {
+        return VisionMediaBridge.positionSeconds();
+    }
+
     private static void render(GuiGraphicsExtractor graphics, DeltaTracker tickCounter) {
         if (!enabled) return;
         Minecraft client = Minecraft.getInstance();
@@ -153,7 +157,9 @@ final class FloatingLyrics {
         }
         if (mode == VisionSettings.MODE_TEXT && NameTagLyrics3D.usable()) {
             Lyrics3D.clear();
-            NameTagLyrics3D.update(key, current.get(active), position);
+            Line activeLine = current.get(active);
+            double nextStart = active + 1 < current.size() ? current.get(active + 1).time() : -1;
+            NameTagLyrics3D.update(key, activeLine.text(), activeLine.time(), nextStart);
             return;
         }
 

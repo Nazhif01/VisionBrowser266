@@ -35,6 +35,9 @@ final class VisionSettings {
     static volatile boolean lyricsFollowRotation = true;
     static volatile float lyricsVerticalOffset = 1.4f;
     static volatile float lyricsHorizontalOffset = 0f;
+    static volatile boolean lyricsGlowRandomPosition = true;
+    static volatile float lyricsGlowRandomRange = 3.5f;
+    static volatile float lyricsGlowSmoothing = 0.55f;
 
     private static final Path FILE = Path.of("config", "visionbrowser.json");
 
@@ -49,7 +52,7 @@ final class VisionSettings {
             if (o.has("floatWidth")) floatWidth = clamp(o.get("floatWidth").getAsFloat(), 0.6f, 7f);
             if (o.has("islandScale")) islandScale = clamp(o.get("islandScale").getAsFloat(), 0.6f, 1.8f);
             if (o.has("lyricsSide")) lyricsSide = clamp(o.get("lyricsSide").getAsFloat(), -1f, 1f);
-            if (o.has("lyricsScale")) lyricsScale = clamp(o.get("lyricsScale").getAsFloat(), 0.6f, 1.6f);
+            if (o.has("lyricsScale")) lyricsScale = clamp(o.get("lyricsScale").getAsFloat(), 0.1f, 1.6f);
             if (o.has("lyricsFont")) lyricsFont = o.get("lyricsFont").getAsString();
             if (o.has("floatLocked")) floatLocked = o.get("floatLocked").getAsBoolean();
             if (o.has("lyricsMode")) lyricsMode = Math.max(0, Math.min(2, o.get("lyricsMode").getAsInt()));
@@ -71,6 +74,9 @@ final class VisionSettings {
             if (o.has("lyricsFollowRotation")) lyricsFollowRotation = o.get("lyricsFollowRotation").getAsBoolean();
             if (o.has("lyricsVerticalOffset")) lyricsVerticalOffset = clamp(o.get("lyricsVerticalOffset").getAsFloat(), -2f, 5f);
             if (o.has("lyricsHorizontalOffset")) lyricsHorizontalOffset = clamp(o.get("lyricsHorizontalOffset").getAsFloat(), -5f, 5f);
+            if (o.has("lyricsGlowRandomPosition")) lyricsGlowRandomPosition = o.get("lyricsGlowRandomPosition").getAsBoolean();
+            if (o.has("lyricsGlowRandomRange")) lyricsGlowRandomRange = clamp(o.get("lyricsGlowRandomRange").getAsFloat(), 0f, 8f);
+            if (o.has("lyricsGlowSmoothing")) lyricsGlowSmoothing = clamp(o.get("lyricsGlowSmoothing").getAsFloat(), 0f, 1f);
         } catch (Throwable ignored) {
             // a broken file simply leaves the defaults in place
         }
@@ -104,6 +110,9 @@ final class VisionSettings {
             o.addProperty("lyricsFollowRotation", lyricsFollowRotation);
             o.addProperty("lyricsVerticalOffset", lyricsVerticalOffset);
             o.addProperty("lyricsHorizontalOffset", lyricsHorizontalOffset);
+            o.addProperty("lyricsGlowRandomPosition", lyricsGlowRandomPosition);
+            o.addProperty("lyricsGlowRandomRange", lyricsGlowRandomRange);
+            o.addProperty("lyricsGlowSmoothing", lyricsGlowSmoothing);
             Files.createDirectories(FILE.getParent());
             Files.writeString(FILE, o.toString(), StandardCharsets.UTF_8);
         } catch (Throwable ignored) {

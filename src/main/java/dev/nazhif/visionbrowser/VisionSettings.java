@@ -15,6 +15,7 @@ final class VisionSettings {
     static volatile float lyricsScale = 1.0f;    // lyric size multiplier
     static volatile String lyricsFont = "Dialog";
     static volatile boolean floatLocked = true;  // floating window follows the player
+    static volatile boolean floatBillboard = true; // floating window rotates to face the camera
     static final int MODE_TEXT = 0, MODE_GLOW = 1, MODE_HUD = 2;
     static volatile int lyricsMode = MODE_TEXT;       // 0 = 3D text (vanilla world text), 1 = 3D glow texture (own fonts), 2 = HUD panel
     static volatile float lyricsDistance = 18f;       // 3D text: blocks in front of the player (6..40)
@@ -58,6 +59,7 @@ final class VisionSettings {
             if (o.has("lyricsScale")) lyricsScale = clamp(o.get("lyricsScale").getAsFloat(), 0.1f, 1.6f);
             if (o.has("lyricsFont")) lyricsFont = o.get("lyricsFont").getAsString();
             if (o.has("floatLocked")) floatLocked = o.get("floatLocked").getAsBoolean();
+            if (o.has("floatBillboard")) floatBillboard = o.get("floatBillboard").getAsBoolean();
             if (o.has("lyricsMode")) lyricsMode = Math.max(0, Math.min(2, o.get("lyricsMode").getAsInt()));
             if (o.has("lyricsDistance")) lyricsDistance = clamp(o.get("lyricsDistance").getAsFloat(), 6f, 40f);
             if (o.has("lyricsSpread")) lyricsSpread = clamp(o.get("lyricsSpread").getAsFloat(), 0f, 1.5f);
@@ -97,6 +99,7 @@ final class VisionSettings {
             o.addProperty("lyricsScale", lyricsScale);
             o.addProperty("lyricsFont", lyricsFont);
             o.addProperty("floatLocked", floatLocked);
+            o.addProperty("floatBillboard", floatBillboard);
             o.addProperty("lyricsMode", lyricsMode);
             o.addProperty("lyricsDistance", lyricsDistance);
             o.addProperty("lyricsSpread", lyricsSpread);

@@ -37,17 +37,20 @@ final class NameTagLyrics3D {
         final List<String> lines;
         final int total;
         final double x, y, z;
+        final double forward, side, height, spawnYaw, spawnPitch;
         final long spawn, durationMs;
         final String prefix;
         boolean exiting;
         long exitTime;
 
-        Inst(String text, double x, double y, double z, long now, long durationMs, String prefix) {
+        Inst(String text, double x, double y, double z, double forward, double side, double height, double yaw, double pitch, long now, long durationMs, String prefix) {
             this.lines = wrap(text);
             int n = 0;
             for (String l : lines) n += l.length() + 1;
-            this.total = Math.max(1, n - 1);
-            this.x = x; this.y = y; this.z = z; this.spawn = now; this.durationMs = durationMs; this.prefix = prefix;
+            this.total = VisionSettings.lyricsWordByWord ? countWords(this.lines) : Math.max(1, n - 1);
+            this.x = x; this.y = y; this.z = z;
+            this.forward = forward; this.side = side; this.height = height; this.spawnYaw = yaw; this.spawnPitch = pitch;
+            this.spawn = now; this.durationMs = durationMs; this.prefix = prefix;
         }
 
         void startExit(long now) { if (!exiting) { exiting = true; exitTime = now; } }
@@ -56,12 +59,24 @@ final class NameTagLyrics3D {
 
         void render(Object collector, Method submit, PoseStack ps, CameraRenderState crs, long now) throws Exception {
             long age = now - spawn;
-            long reveal = Math.min(durationMs / 2, Math.max(160, total * 28L));      // typewriter duration
+            long reveal = VisionSettings.lyricsWordByWord ? Math.min(durationMs / 2, Math.max(160, Math.round(total * VisionSettings.lyricsWordSpeed * 1000f))) : Math.min(durationMs / 2, Math.max(160, total * 28L));
             float progress = exiting ? 1f : Math.min(1f, age / (float) Math.max(1, reveal));
             int visible = Math.max(1, (int) (total * progress));
             float exit = exiting ? 1f - Math.min(1f, (now - exitTime) / (float) EXIT_MS) : 1f;
             if (exit <= 0.02f) return;
-            double dx = x - crs.pos.x, dy = y - crs.pos.y, dz = z - crs.pos.z;
+            double tx = x, ty = y, tz = z;
+            if (VisionSettings.lyricsPlayerRelative) {
+                Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
+                Vec3 playerCamera = camera.position();
+                double yaw = Math.toRadians(VisionSettings.lyricsFollowRotation ? camera.yRot() : Math.toDegrees(spawnYaw));
+                double pitch = Math.toRadians(VisionSettings.lyricsFollowRotation ? camera.xRot() : Math.toDegrees(spawnPitch));
+                double fx = -Math.sin(yaw) * Math.cos(pitch), fy = -Math.sin(pitch), fz = Math.cos(yaw) * Math.cos(pitch);
+                double rx = Math.cos(yaw), rz = Math.sin(yaw);
+                tx = playerCamera.x + fx * forward + rx * side;
+                ty = playerCamera.y + fy * forward + height;
+                tz = playerCamera.z + fz * forward + rz * side;
+            }
+            double dx = tx - crs.pos.x, dy = ty - crs.pos.y, dz = tz - crs.pos.z;
             double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
             if (dist > 140) return;
             float distScale = (float) Math.pow(Math.max(4.0, dist) / 4.0, 0.85);    // keeps the apparent size roughly constant
@@ -72,14 +87,16 @@ final class NameTagLyrics3D {
             int used = 0;
             for (int i = 0; i < lines.size(); i++) {
                 String line = lines.get(i);
-                int shown = visible > used ? Math.min(line.length(), visible - used) : 0;
-                used += line.length() + 1;
+                int units = VisionSettings.lyricsWordByWord ? line.split("\\s+").length : line.length();
+                int shown = visible > used ? Math.min(units, visible - used) : 0;
+                used += units + 1;
                 if (shown <= 0) continue;
+                String partial = VisionSettings.lyricsWordByWord ? firstWords(line, shown) : line.substring(0, shown);
                 double lineDrop = -i * 0.38 * scale;
                 ps.pushPose();
                 ps.scale(scale, scale, scale);
                 Vec3 p = new Vec3(dx / scale, (dy + lineDrop) / scale, dz / scale);
-                submit.invoke(collector, ps, p, 0, Component.literal(color + line.substring(0, shown)), true, FULL_BRIGHT, crs);
+                submit.invoke(collector, ps, p, 0, Component.literal(color + partial), true, FULL_BRIGHT, crs);
                 ps.popPose();
             }
         }
@@ -202,11 +219,12 @@ final class NameTagLyrics3D {
             double rx = Math.cos(yaw), rz = Math.sin(yaw);
             counter++;
             double dist = VisionSettings.lyricsDistance;
-            double lateral = (counter % 2 == 1 ? -4.5 : 4.5) * VisionSettings.lyricsSpread;
-            double height = counter % 3 == 0 ? 2.5 : (counter % 2 == 1 ? 0.8 : 1.8);
+            double lateral = VisionSettings.lyricsSide * 4.5 + (counter % 2 == 1 ? -4.5 : 4.5) * VisionSettings.lyricsSpread
+                    + VisionSettings.lyricsHorizontalOffset;
+            double height = (counter % 3 == 0 ? 2.5 : (counter % 2 == 1 ? 0.8 : 1.8)) + VisionSettings.lyricsVerticalOffset;
             String shown = text.trim();
             active = new Inst(shown, cp.x + fx * dist + rx * lateral, cp.y + fy * dist + height, cp.z + fz * dist + rz * lateral,
-                    now, Math.max(800, durationMs), colorPrefix());
+                    dist, lateral, height, yaw, pitch, now, Math.max(800, durationMs), colorPrefix());
         } catch (Throwable error) {
             status = "3D text: cannot place line (" + describe(error) + ")";
         }
@@ -239,6 +257,17 @@ final class NameTagLyrics3D {
             }
         }
         return "\u00a7" + code + "\u00a7l";
+    }
+
+    private static int countWords(List<String> lines) {
+        int count = 0;
+        for (String line : lines) count += (line.isBlank() ? 0 : line.trim().split("\\s+").length) + 1;
+        return Math.max(1, count);
+    }
+
+    private static String firstWords(String line, int count) {
+        String[] words = line.trim().split("\\s+");
+        return String.join(" ", java.util.Arrays.copyOf(words, Math.min(count, words.length)));
     }
 
     /** word-wraps a lyric into lines of about 28 characters */

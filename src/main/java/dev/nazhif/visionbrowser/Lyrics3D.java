@@ -320,24 +320,57 @@ final class Lyrics3D {
                 if (a255 < 4) continue;
 
                 float hw = l.texW * BLOCKS_PER_PX * l.scale / 2f, hh = l.texH * BLOCKS_PER_PX * l.scale / 2f;
-                float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}}; // TL, TR, BR, BL
                 float[] sx = new float[4], sy = new float[4], sw = new float[4];
-                boolean visible = true;
-                for (int i = 0; i < 4; i++) {
-                    double wx = cx + lineRx * corner[i][0], wy = cy + corner[i][1], wz = cz + lineRz * corner[i][0];
-                    float[] n = ndc(vp, wx - cp.x, wy - cp.y, wz - cp.z);
-                    if (n[2] < 0.1f) { visible = false; break; }
-                    sx[i] = (n[0] * signX * 0.5f + 0.5f) * gw;
-                    sy[i] = (0.5f - n[1] * signY * 0.5f) * gh;
-                    sw[i] = n[2];
+                // Keep the complete lyric quad inside a safe monitor margin. Shrink the
+                // world-space quad uniformly instead of cropping any part of its texture.
+                // The upper edge recedes slightly, giving the lyric a subtle perspective tilt.
+                float low = 0f, high = 1f;
+                for (int fit = 0; fit < 18; fit++) {
+                    float candidate = (low + high) * 0.5f;
+                    if (projectQuad(vp, cp, cx, cy, cz, lineRx, lineRz, lineNx, lineNz,
+                            hw * candidate, hh * candidate, gw, gh, signX, signY, sx, sy, sw)) {
+                        low = candidate;
+                    } else {
+                        high = candidate;
+                    }
                 }
-                if (visible) drawStrips(g, tex, l.texW, l.texH, sx, sy, sw, gw, gh, a255);
+                if (low > 0.001f && projectQuad(vp, cp, cx, cy, cz, lineRx, lineRz, lineNx, lineNz,
+                        hw * low, hh * low, gw, gh, signX, signY, sx, sy, sw)) {
+                    drawStrips(g, tex, l.texW, l.texH, sx, sy, sw, gw, gh, a255);
+                }
             }
             return true;
         } catch (Throwable error) {
             status = "3D lyrics: error (" + error.getClass().getSimpleName() + ")";
             return false;
         }
+    }
+
+    private static boolean projectQuad(Matrix4f vp, Vec3 camera, double cx, double cy, double cz,
+                                       double rightX, double rightZ, double normalX, double normalZ,
+                                       float hw, float hh, int gw, int gh, float signX, float signY,
+                                       float[] sx, float[] sy, float[] sw) {
+        float tiltDepth = hh * 0.18f;
+        float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}}; // TL, TR, BR, BL
+        for (int i = 0; i < 4; i++) {
+            boolean top = i < 2;
+            double depth = top ? -tiltDepth : 0.0;
+            double wx = cx + rightX * corner[i][0] + normalX * depth;
+            double wy = cy + corner[i][1];
+            double wz = cz + rightZ * corner[i][0] + normalZ * depth;
+            float[] n = ndc(vp, wx - camera.x, wy - camera.y, wz - camera.z);
+            if (n[2] < 0.1f) return false;
+            sx[i] = (n[0] * signX * 0.5f + 0.5f) * gw;
+            sy[i] = (0.5f - n[1] * signY * 0.5f) * gh;
+            sw[i] = n[2];
+        }
+        float marginX = Math.max(8f, gw * 0.035f);
+        float marginY = Math.max(8f, gh * 0.05f);
+        for (int i = 0; i < 4; i++) {
+            if (sx[i] < marginX || sx[i] > gw - marginX ||
+                    sy[i] < marginY || sy[i] > gh - marginY) return false;
+        }
+        return true;
     }
 
     private static void prune(long now) {

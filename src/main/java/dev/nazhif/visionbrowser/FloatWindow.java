@@ -170,15 +170,11 @@ final class FloatWindow {
                 right = new double[]{rxv, 0, rzv};
                 upv = new double[]{-rzv * ly, rzv * lx - rxv * lz, rxv * ly};
             } else {
-                // Non-billboard mode: capture a world-facing orientation once, then keep it
-                // independent from camera/head rotation while position can still follow the player.
-                if (!fixedOrientationInit) {
-                    double playerYaw = Math.toRadians(mc.player.getYRot());
-                    fixedRightX = -Math.cos(playerYaw);
-                    fixedRightZ = -Math.sin(playerYaw);
-                    fixedOrientationInit = true;
-                }
-                right = new double[]{fixedRightX, 0, fixedRightZ};
+                // Non-billboard mode: ignore camera pitch and head yaw.
+                // Follow the player's body yaw continuously, allowing a full 360-degree turn
+                // without tilting the window when the player looks up or down.
+                double playerYaw = Math.toRadians(mc.player.getYRot());
+                right = new double[]{-Math.cos(playerYaw), 0, -Math.sin(playerYaw)};
                 upv = new double[]{0, 1, 0};
             }
 

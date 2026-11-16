@@ -204,7 +204,7 @@ final class NameTagLyrics3D {
             double rx = Math.cos(yaw), rz = Math.sin(yaw);
             counter++;
             double dist = VisionSettings.lyricsDistance;
-            double lateral = (counter % 2 == 1 ? -4.5 : 4.5) * VisionSettings.lyricsSpread;
+            double lateral = VisionSettings.lyricsSide * 4.5 + (counter % 2 == 1 ? -4.5 : 4.5) * VisionSettings.lyricsSpread;
             double height = counter % 3 == 0 ? 2.5 : (counter % 2 == 1 ? 0.8 : 1.8);
             String shown = text.trim();
             active = new Inst(shown, cp.x + fx * dist + rx * lateral, cp.y + fy * dist + height, cp.z + fz * dist + rz * lateral,
@@ -245,7 +245,7 @@ final class NameTagLyrics3D {
 
     private static int countWords(List<String> lines) {
         int count = 0;
-        for (String line : lines) count += line.isBlank() ? 0 : line.trim().split("\\s+").length;
+        for (String line : lines) count += (line.isBlank() ? 0 : line.trim().split("\\s+").length) + 1;
         return Math.max(1, count);
     }
 

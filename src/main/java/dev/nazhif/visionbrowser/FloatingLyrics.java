@@ -41,6 +41,11 @@ final class FloatingLyrics {
     static boolean isEnabled() { return enabled; }
     static boolean hasLyrics() { return !lines.isEmpty(); }
 
+    /** Song position adjusted by the user offset and vocal-sync buffer. */
+    static double lyricPosition() {
+        return VisionMediaBridge.positionSeconds() + VisionSettings.lyricsOffsetMs / 1000.0 - VOCAL_SYNC_DELAY_SECONDS;
+    }
+
     static void loadTrack(String title, String artist, double duration) {
         String key = title + "|" + artist;
         if (key.equals(requestedTrack)) return;
@@ -113,7 +118,7 @@ final class FloatingLyrics {
             return;
         }
 
-        double position = VisionMediaBridge.positionSeconds();
+        double position = lyricPosition();
         int active = -1;
         for (int i = 0; i < current.size(); i++) {
             if (current.get(i).time() <= position - VOCAL_SYNC_DELAY_SECONDS) active = i;
@@ -135,8 +140,8 @@ final class FloatingLyrics {
         }
         if (mode == VisionSettings.MODE_TEXT && NameTagLyrics3D.usable()) {
             Lyrics3D.clear();
-            long durationMs = active + 1 < current.size() ? Math.round((current.get(active + 1).time() - current.get(active).time()) * 1000) : 3500;
-            NameTagLyrics3D.update(key, current.get(active).text(), durationMs);
+            double nextStart = active + 1 < current.size() ? current.get(active + 1).time() : -1.0;
+            NameTagLyrics3D.update(key, current.get(active).text(), current.get(active).time(), nextStart);
             return;
         }
         // glow-texture 3D (chosen, or the fallback when the vanilla-text path is unavailable)

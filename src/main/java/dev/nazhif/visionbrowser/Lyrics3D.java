@@ -35,17 +35,20 @@ final class Lyrics3D {
         final long born = System.currentTimeMillis();
         final String text;
         final double cx, cy, cz;   // world centre at spawn
-        final double rx, rz;       // horizontal "right" unit vector
-        final double nx, nz;       // horizontal normal pointing at the player who saw it spawn
+        final double rx, rz;       // initial horizontal right vector
+        final double nx, nz;       // initial horizontal normal
+        final double forward, side, up, spawnYaw, spawnPitch;
         final float scale = VisionSettings.lyricsScale; // size multiplier captured at spawn
         float lift, liftTarget;
         volatile Identifier texture;
         volatile int texW, texH;
         volatile boolean released, failed;
 
-        Line(String text, double cx, double cy, double cz, double rx, double rz, double nx, double nz) {
+        Line(String text, double cx, double cy, double cz, double rx, double rz, double nx, double nz,
+             double forward, double side, double up, double yaw, double pitch) {
             this.text = text; this.cx = cx; this.cy = cy; this.cz = cz;
             this.rx = rx; this.rz = rz; this.nx = nx; this.nz = nz;
+            this.forward = forward; this.side = side; this.up = up; this.spawnYaw = yaw; this.spawnPitch = pitch;
         }
     }
 
@@ -73,10 +76,13 @@ final class Lyrics3D {
             double yaw = Math.toRadians(cam.yRot()), pitch = Math.toRadians(cam.xRot());
             double lx = -Math.sin(yaw) * Math.cos(pitch), ly = -Math.sin(pitch), lz = Math.cos(yaw) * Math.cos(pitch);
             for (Line old : lines) old.liftTarget += 1.0f;
-            // placed to the SIDE of the view (slider: left .. right) so the lyrics never sit right in front of the player's eyes
-            double rxs = -Math.cos(yaw), rzs = -Math.sin(yaw), lat = VisionSettings.lyricsSide * 4.5;
-            Line line = new Line(text, cp.x + lx * VisionSettings.lyricsWorldDistance + rxs * lat, cp.y + ly * VisionSettings.lyricsWorldDistance + 0.6, cp.z + lz * VisionSettings.lyricsWorldDistance + rzs * lat,
-                    -Math.cos(yaw), -Math.sin(yaw), Math.sin(yaw), -Math.cos(yaw));
+            // Offset from the player's view. In player-relative mode the render loop recalculates this anchor each frame.
+            double rxs = -Math.cos(yaw), rzs = -Math.sin(yaw);
+            double forward = VisionSettings.lyricsWorldDistance;
+            double lat = VisionSettings.lyricsSide * 4.5 + VisionSettings.lyricsHorizontalOffset;
+            double up = 0.6 + VisionSettings.lyricsVerticalOffset;
+            Line line = new Line(text, cp.x + lx * forward + rxs * lat, cp.y + ly * forward + up, cp.z + lz * forward + rzs * lat,
+                    rxs, rzs, Math.sin(yaw), -Math.cos(yaw), forward, lat, up, yaw, pitch);
             lines.add(line);
             while (lines.size() > VisionSettings.lyricsMaxLines) release(lines.remove(0));
             rasterize(line);
@@ -245,8 +251,21 @@ final class Lyrics3D {
                 long age = now - l.born;
                 float alpha = Math.min(1f, age / (float) FADE_IN_MS) * Math.max(0f, Math.min(1f, (lifeMs() - age) / (float) FADE_OUT_MS));
                 alpha *= Math.max(0.3f, 1f - 0.35f * l.liftTarget);
-                double cx = l.cx, cy = l.cy + l.lift, cz = l.cz;
-                if ((cp.x - cx) * l.nx + (cp.z - cz) * l.nz <= 0) continue; // seen from behind
+                double useYaw = VisionSettings.lyricsFollowRotation ? yaw : l.spawnYaw;
+                double usePitch = VisionSettings.lyricsFollowRotation ? pitch : l.spawnPitch;
+                double fx = -Math.sin(useYaw) * Math.cos(usePitch), fy = -Math.sin(usePitch), fz = Math.cos(useYaw) * Math.cos(usePitch);
+                double rightX = -Math.cos(useYaw), rightZ = -Math.sin(useYaw);
+                double cx = l.cx, cy = l.cy, cz = l.cz;
+                double lineRx = l.rx, lineRz = l.rz, lineNx = l.nx, lineNz = l.nz;
+                if (VisionSettings.lyricsPlayerRelative) {
+                    cx = cp.x + fx * l.forward + rightX * l.side;
+                    cy = cp.y + fy * l.forward + l.up;
+                    cz = cp.z + fz * l.forward + rightZ * l.side;
+                    lineRx = rightX; lineRz = rightZ;
+                    lineNx = Math.sin(useYaw); lineNz = -Math.cos(useYaw);
+                }
+                cy += l.lift;
+                if ((cp.x - cx) * lineNx + (cp.z - cz) * lineNz <= 0) continue; // seen from behind
                 double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
                 alpha *= (float) Math.max(0, Math.min(1, (dist - 0.8) / 1.5)) * (float) Math.max(0, Math.min(1, (64 - dist) / 24));
                 int a255 = Math.round(alpha * 255f);
@@ -257,7 +276,7 @@ final class Lyrics3D {
                 float[] sx = new float[4], sy = new float[4], sw = new float[4];
                 boolean visible = true;
                 for (int i = 0; i < 4; i++) {
-                    double wx = cx + l.rx * corner[i][0], wy = cy + corner[i][1], wz = cz + l.rz * corner[i][0];
+                    double wx = cx + lineRx * corner[i][0], wy = cy + corner[i][1], wz = cz + lineRz * corner[i][0];
                     float[] n = ndc(vp, wx - cp.x, wy - cp.y, wz - cp.z);
                     if (n[2] < 0.1f) { visible = false; break; }
                     sx[i] = (n[0] * signX * 0.5f + 0.5f) * gw;

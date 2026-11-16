@@ -37,17 +37,20 @@ final class NameTagLyrics3D {
         final List<String> lines;
         final int total;
         final double x, y, z;
+        final double forward, side, height, spawnYaw, spawnPitch;
         final long spawn, durationMs;
         final String prefix;
         boolean exiting;
         long exitTime;
 
-        Inst(String text, double x, double y, double z, long now, long durationMs, String prefix) {
+        Inst(String text, double x, double y, double z, double forward, double side, double height, double yaw, double pitch, long now, long durationMs, String prefix) {
             this.lines = wrap(text);
             int n = 0;
             for (String l : lines) n += l.length() + 1;
             this.total = VisionSettings.lyricsWordByWord ? countWords(this.lines) : Math.max(1, n - 1);
-            this.x = x; this.y = y; this.z = z; this.spawn = now; this.durationMs = durationMs; this.prefix = prefix;
+            this.x = x; this.y = y; this.z = z;
+            this.forward = forward; this.side = side; this.height = height; this.spawnYaw = yaw; this.spawnPitch = pitch;
+            this.spawn = now; this.durationMs = durationMs; this.prefix = prefix;
         }
 
         void startExit(long now) { if (!exiting) { exiting = true; exitTime = now; } }
@@ -61,7 +64,19 @@ final class NameTagLyrics3D {
             int visible = Math.max(1, (int) (total * progress));
             float exit = exiting ? 1f - Math.min(1f, (now - exitTime) / (float) EXIT_MS) : 1f;
             if (exit <= 0.02f) return;
-            double dx = x - crs.pos.x, dy = y - crs.pos.y, dz = z - crs.pos.z;
+            double tx = x, ty = y, tz = z;
+            if (VisionSettings.lyricsPlayerRelative) {
+                Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
+                Vec3 playerCamera = camera.position();
+                double yaw = Math.toRadians(VisionSettings.lyricsFollowRotation ? camera.yRot() : Math.toDegrees(spawnYaw));
+                double pitch = Math.toRadians(VisionSettings.lyricsFollowRotation ? camera.xRot() : Math.toDegrees(spawnPitch));
+                double fx = -Math.sin(yaw) * Math.cos(pitch), fy = -Math.sin(pitch), fz = Math.cos(yaw) * Math.cos(pitch);
+                double rx = Math.cos(yaw), rz = Math.sin(yaw);
+                tx = playerCamera.x + fx * forward + rx * side;
+                ty = playerCamera.y + fy * forward + height;
+                tz = playerCamera.z + fz * forward + rz * side;
+            }
+            double dx = tx - crs.pos.x, dy = ty - crs.pos.y, dz = tz - crs.pos.z;
             double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
             if (dist > 140) return;
             float distScale = (float) Math.pow(Math.max(4.0, dist) / 4.0, 0.85);    // keeps the apparent size roughly constant
@@ -204,11 +219,12 @@ final class NameTagLyrics3D {
             double rx = Math.cos(yaw), rz = Math.sin(yaw);
             counter++;
             double dist = VisionSettings.lyricsDistance;
-            double lateral = VisionSettings.lyricsSide * 4.5 + (counter % 2 == 1 ? -4.5 : 4.5) * VisionSettings.lyricsSpread;
-            double height = counter % 3 == 0 ? 2.5 : (counter % 2 == 1 ? 0.8 : 1.8);
+            double lateral = VisionSettings.lyricsSide * 4.5 + (counter % 2 == 1 ? -4.5 : 4.5) * VisionSettings.lyricsSpread
+                    + VisionSettings.lyricsHorizontalOffset;
+            double height = (counter % 3 == 0 ? 2.5 : (counter % 2 == 1 ? 0.8 : 1.8)) + VisionSettings.lyricsVerticalOffset;
             String shown = text.trim();
             active = new Inst(shown, cp.x + fx * dist + rx * lateral, cp.y + fy * dist + height, cp.z + fz * dist + rz * lateral,
-                    now, Math.max(800, durationMs), colorPrefix());
+                    dist, lateral, height, yaw, pitch, now, Math.max(800, durationMs), colorPrefix());
         } catch (Throwable error) {
             status = "3D text: cannot place line (" + describe(error) + ")";
         }

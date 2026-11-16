@@ -69,7 +69,7 @@ final class VisionSettings {
             if (o.has("lyricsWorldDistance")) lyricsWorldDistance = clamp(o.get("lyricsWorldDistance").getAsFloat(), 3f, 24f);
             if (o.has("lyricsLifeSeconds")) lyricsLifeSeconds = clamp(o.get("lyricsLifeSeconds").getAsFloat(), 2f, 20f);
             if (o.has("lyricsMaxLines")) lyricsMaxLines = Math.max(1, Math.min(8, o.get("lyricsMaxLines").getAsInt()));
-            if (o.has("lyricsFontSize")) lyricsFontSize = Math.max(24, Math.min(96, o.get("lyricsFontSize").getAsInt()));
+            if (o.has("lyricsFontSize")) lyricsFontSize = Math.max(12, Math.min(96, o.get("lyricsFontSize").getAsInt()));
             if (o.has("lyricsPlayerRelative")) lyricsPlayerRelative = o.get("lyricsPlayerRelative").getAsBoolean();
             if (o.has("lyricsFollowRotation")) lyricsFollowRotation = o.get("lyricsFollowRotation").getAsBoolean();
             if (o.has("lyricsVerticalOffset")) lyricsVerticalOffset = clamp(o.get("lyricsVerticalOffset").getAsFloat(), -2f, 5f);

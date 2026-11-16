@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /** User-adjustable look-and-feel values, edited with the sliders that appear while the chat is open. Saved to config/visionbrowser.json. */
+// Synced with the latest Claude-provided implementation.
 final class VisionSettings {
     static volatile float floatWidth = 1.8f;     // floating window width in blocks
     static volatile float islandScale = 1.0f;    // Dynamic Island size multiplier

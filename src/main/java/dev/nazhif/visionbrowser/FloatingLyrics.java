@@ -21,7 +21,7 @@ final class FloatingLyrics {
     private static volatile boolean enabled = true;
     private static volatile String requestedTrack = "";
     private static final AtomicLong requestId = new AtomicLong();
-    private static final double VOCAL_SYNC_DELAY_SECONDS = 0.35;
+    private static final double VOCAL_SYNC_DELAY_SECONDS = 0.08;
 
     private FloatingLyrics() { }
 

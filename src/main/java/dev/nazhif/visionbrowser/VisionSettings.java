@@ -1,115 +1,243 @@
 package dev.nazhif.visionbrowser;
 
-import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
-import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
-import com.mojang.renderpearl.api.pipeline.RenderPipeline;
-import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.renderpearl.api.commands.RenderPass;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.textures.GpuTextureView;
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.renderpearl.api.vertex.VertexFormat;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionEvents;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.StagedVertexBuffer;
-import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.resources.Identifier;
-import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
-import org.joml.Matrix4fc;
-import org.joml.Vector3f;
-import org.joml.Vector4f;
-import java.util.Optional;
-import java.util.OptionalDouble;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
-/** First world-space panel prototype; browser texture input follows in the next milestone. */
-final class VisionWorldPanel {
-    private static final RenderPipeline PIPELINE = RenderPipelines.register(
-            RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
-                    .withLocation(Identifier.fromNamespaceAndPath("visionbrowser", "pipeline/world_panel"))
-                    .build());
-    private static final Vector4f COLOR = new Vector4f(1, 1, 1, 1);
-    private static final Vector3f OFFSET = new Vector3f();
-    private static final Matrix4f TEXTURE = new Matrix4f();
-    private static final StagedVertexBuffer BUFFER =
-            new StagedVertexBuffer(() -> "Vision Browser World Panel", RenderType.SMALL_BUFFER_SIZE);
-    private static PanelState state;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
-    private VisionWorldPanel() {}
+/** All user-adjustable values, edited in the chat settings window. Saved to config/visionbrowser.json. */
+final class VisionSettings {
+    static final int MODE_TEXT = 0, MODE_GLOW = 1, MODE_HUD = 2;
 
-    static void register() {
-        // World rendering is temporarily disabled while the Minecraft 26.3
-        // RenderPearl pass lifecycle is being corrected. This prevents the
-        // panel from uploading GPU buffers inside an active render pass.
+    // ---- floating window
+    static volatile float floatWidth = 1.8f;
+    static volatile float floatDistance = 3.0f;
+    static volatile float floatHeight = 0f;
+    static volatile float floatSide = 0f;
+    static volatile float floatFollowSpeed = 9f;
+    static volatile float floatOpacity = 1f;
+    static volatile float floatCorner = 0.14f;
+    static volatile boolean floatLocked = true;
+    static volatile boolean floatBillboard = true;
+    static volatile boolean floatLockBar = true;
+    static volatile boolean floatToast = true;
+
+    // ---- dynamic island
+    static volatile boolean islandShow = true;
+    static volatile float islandScale = 1.0f;
+    static volatile float islandOffsetX = 0f;
+    static volatile float islandOffsetY = 0f;
+
+    // ---- lyrics: general
+    static volatile int lyricsMode = MODE_TEXT;
+    static volatile boolean lyricsAlbumColor = true;
+    static volatile float lyricsScale = 1.0f;
+    static volatile boolean lyricsReveal = true;
+    static volatile boolean lyricsWordByWord = false;
+    static volatile float lyricsWordSpeed = 0.22f;
+    static volatile int lyricsMaxLines = 3;
+    static volatile float lyricsLifeSeconds = 7.5f;
+
+    // ---- lyrics: world placement (classic)
+    static volatile float lyricsDistance = 18f;
+    static volatile float lyricsSpread = 1.0f;
+    static volatile float lyricsSide = 0.6f;
+    static volatile float lyricsVerticalOffset = 1.4f;
+    static volatile float lyricsHorizontalOffset = 0f;
+    static volatile float lyricsWorldDistance = 7f;
+    static volatile boolean lyricsGlowRandomPosition = true;
+    static volatile float lyricsGlowRandomRange = 3.5f;
+    static volatile boolean lyricsPlayerRelative = false;
+    static volatile boolean lyricsFollowRotation = true;
+    static volatile float lyricsGlowSmoothing = 0.55f;
+
+    // ---- lyrics: player view (random spot in the view, never on the crosshair, always fully on screen, always facing the player)
+    static volatile boolean lyricsViewMode = true;
+    static volatile int lyricsViewAnchor = 0;          // 0 random, 1 top, 2 bottom, 3 upper-left, 4 upper-right, 5 lower-left, 6 lower-right
+    static volatile float lyricsViewDepth = 9f;
+    static volatile float lyricsCrosshairExclude = 0.32f;
+    static volatile float lyricsScreenMargin = 0.08f;
+    static volatile float lyricsViewSmoothing = 0.35f;
+    static volatile boolean lyricsFaceAlways = true;
+    static volatile boolean lyricsFitScreen = true;
+
+    // ---- lyrics: animation
+    static volatile int lyricsAnimIn = 2;
+    static volatile int lyricsAnimOut = 1;
+    static volatile float lyricsAnimSpeed = 1f;
+    static volatile float lyricsBob = 0f;
+    static volatile float lyricsPulse = 0f;
+
+    // ---- lyrics: glow texture
+    static volatile String lyricsFont = "Dialog";
+    static volatile int lyricsFontSize = 48;
+    static volatile float glowIntensity = 2.6f;
+    static volatile float glowRadius = 8f;
+
+    // ---- lyrics: HUD
+    static volatile int hudPosition = 0;
+    static volatile int hudLines = 3;
+    static volatile boolean hudPanel = false;
+
+    private static final Path FILE = Path.of("config", "visionbrowser.json");
+    private static final JsonObject DEFAULTS = toJson();
+
+    private VisionSettings() { }
+
+    static float clamp(float v, float lo, float hi) { return Math.max(lo, Math.min(hi, v)); }
+    private static int clampI(int v, int lo, int hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    private static float f(JsonObject o, String k, float cur, float lo, float hi) { return o.has(k) ? clamp(o.get(k).getAsFloat(), lo, hi) : cur; }
+    private static int i(JsonObject o, String k, int cur, int lo, int hi) { return o.has(k) ? clampI(o.get(k).getAsInt(), lo, hi) : cur; }
+    private static boolean b(JsonObject o, String k, boolean cur) { return o.has(k) ? o.get(k).getAsBoolean() : cur; }
+
+    private static void apply(JsonObject o) {
+        floatWidth = f(o, "floatWidth", floatWidth, 0.6f, 7f);
+        floatDistance = f(o, "floatDistance", floatDistance, 1.2f, 10f);
+        floatHeight = f(o, "floatHeight", floatHeight, -2f, 2f);
+        floatSide = f(o, "floatSide", floatSide, -3f, 3f);
+        floatFollowSpeed = f(o, "floatFollowSpeed", floatFollowSpeed, 1f, 30f);
+        floatOpacity = f(o, "floatOpacity", floatOpacity, 0.15f, 1f);
+        floatCorner = f(o, "floatCorner", floatCorner, 0f, 0.5f);
+        floatLocked = b(o, "floatLocked", floatLocked);
+        floatBillboard = b(o, "floatBillboard", floatBillboard);
+        floatLockBar = b(o, "floatLockBar", floatLockBar);
+        floatToast = b(o, "floatToast", floatToast);
+
+        islandShow = b(o, "islandShow", islandShow);
+        islandScale = f(o, "islandScale", islandScale, 0.6f, 1.8f);
+        islandOffsetX = f(o, "islandOffsetX", islandOffsetX, -300f, 300f);
+        islandOffsetY = f(o, "islandOffsetY", islandOffsetY, 0f, 120f);
+
+        lyricsMode = i(o, "lyricsMode", lyricsMode, 0, 2);
+        lyricsAlbumColor = b(o, "lyricsAlbumColor", lyricsAlbumColor);
+        lyricsScale = f(o, "lyricsScale", lyricsScale, 0.1f, 1.6f);
+        lyricsReveal = b(o, "lyricsReveal", lyricsReveal);
+        lyricsWordByWord = b(o, "lyricsWordByWord", lyricsWordByWord);
+        lyricsWordSpeed = f(o, "lyricsWordSpeed", lyricsWordSpeed, 0.08f, 0.8f);
+        lyricsMaxLines = i(o, "lyricsMaxLines", lyricsMaxLines, 1, 8);
+        lyricsLifeSeconds = f(o, "lyricsLifeSeconds", lyricsLifeSeconds, 2f, 20f);
+
+        lyricsDistance = f(o, "lyricsDistance", lyricsDistance, 6f, 40f);
+        lyricsSpread = f(o, "lyricsSpread", lyricsSpread, 0f, 1.5f);
+        lyricsSide = f(o, "lyricsSide", lyricsSide, -1f, 1f);
+        lyricsVerticalOffset = f(o, "lyricsVerticalOffset", lyricsVerticalOffset, -2f, 5f);
+        lyricsHorizontalOffset = f(o, "lyricsHorizontalOffset", lyricsHorizontalOffset, -5f, 5f);
+        lyricsWorldDistance = f(o, "lyricsWorldDistance", lyricsWorldDistance, 3f, 24f);
+        lyricsGlowRandomPosition = b(o, "lyricsGlowRandomPosition", lyricsGlowRandomPosition);
+        lyricsGlowRandomRange = f(o, "lyricsGlowRandomRange", lyricsGlowRandomRange, 0f, 8f);
+        lyricsPlayerRelative = b(o, "lyricsPlayerRelative", lyricsPlayerRelative);
+        lyricsFollowRotation = b(o, "lyricsFollowRotation", lyricsFollowRotation);
+        lyricsGlowSmoothing = f(o, "lyricsGlowSmoothing", lyricsGlowSmoothing, 0f, 1f);
+
+        lyricsViewMode = b(o, "lyricsViewMode", lyricsViewMode);
+        lyricsViewAnchor = i(o, "lyricsViewAnchor", lyricsViewAnchor, 0, 6);
+        lyricsViewDepth = f(o, "lyricsViewDepth", lyricsViewDepth, 3f, 30f);
+        lyricsCrosshairExclude = f(o, "lyricsCrosshairExclude", lyricsCrosshairExclude, 0.05f, 0.7f);
+        lyricsScreenMargin = f(o, "lyricsScreenMargin", lyricsScreenMargin, 0.01f, 0.3f);
+        lyricsViewSmoothing = f(o, "lyricsViewSmoothing", lyricsViewSmoothing, 0f, 1f);
+        lyricsFaceAlways = b(o, "lyricsFaceAlways", lyricsFaceAlways);
+        lyricsFitScreen = b(o, "lyricsFitScreen", lyricsFitScreen);
+
+        lyricsAnimIn = i(o, "lyricsAnimIn", lyricsAnimIn, 0, LyricAnim.IN.length - 1);
+        lyricsAnimOut = i(o, "lyricsAnimOut", lyricsAnimOut, 0, LyricAnim.OUT.length - 1);
+        lyricsAnimSpeed = f(o, "lyricsAnimSpeed", lyricsAnimSpeed, 0.3f, 3f);
+        lyricsBob = f(o, "lyricsBob", lyricsBob, 0f, 1f);
+        lyricsPulse = f(o, "lyricsPulse", lyricsPulse, 0f, 1f);
+
+        if (o.has("lyricsFont")) lyricsFont = o.get("lyricsFont").getAsString();
+        lyricsFontSize = i(o, "lyricsFontSize", lyricsFontSize, 12, 96);
+        glowIntensity = f(o, "glowIntensity", glowIntensity, 0f, 5f);
+        glowRadius = f(o, "glowRadius", glowRadius, 2f, 18f);
+
+        hudPosition = i(o, "hudPosition", hudPosition, 0, 5);
+        hudLines = i(o, "hudLines", hudLines, 2, 6);
+        hudPanel = b(o, "hudPanel", hudPanel);
     }
 
-    private static void extract(LevelExtractionContext context) {
-        Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.level == null) {
-            state = null;
-            return;
+    private static JsonObject toJson() {
+        JsonObject o = new JsonObject();
+        o.addProperty("floatWidth", floatWidth);
+        o.addProperty("floatDistance", floatDistance);
+        o.addProperty("floatHeight", floatHeight);
+        o.addProperty("floatSide", floatSide);
+        o.addProperty("floatFollowSpeed", floatFollowSpeed);
+        o.addProperty("floatOpacity", floatOpacity);
+        o.addProperty("floatCorner", floatCorner);
+        o.addProperty("floatLocked", floatLocked);
+        o.addProperty("floatBillboard", floatBillboard);
+        o.addProperty("floatLockBar", floatLockBar);
+        o.addProperty("floatToast", floatToast);
+        o.addProperty("islandShow", islandShow);
+        o.addProperty("islandScale", islandScale);
+        o.addProperty("islandOffsetX", islandOffsetX);
+        o.addProperty("islandOffsetY", islandOffsetY);
+        o.addProperty("lyricsMode", lyricsMode);
+        o.addProperty("lyricsAlbumColor", lyricsAlbumColor);
+        o.addProperty("lyricsScale", lyricsScale);
+        o.addProperty("lyricsReveal", lyricsReveal);
+        o.addProperty("lyricsWordByWord", lyricsWordByWord);
+        o.addProperty("lyricsWordSpeed", lyricsWordSpeed);
+        o.addProperty("lyricsMaxLines", lyricsMaxLines);
+        o.addProperty("lyricsLifeSeconds", lyricsLifeSeconds);
+        o.addProperty("lyricsDistance", lyricsDistance);
+        o.addProperty("lyricsSpread", lyricsSpread);
+        o.addProperty("lyricsSide", lyricsSide);
+        o.addProperty("lyricsVerticalOffset", lyricsVerticalOffset);
+        o.addProperty("lyricsHorizontalOffset", lyricsHorizontalOffset);
+        o.addProperty("lyricsWorldDistance", lyricsWorldDistance);
+        o.addProperty("lyricsGlowRandomPosition", lyricsGlowRandomPosition);
+        o.addProperty("lyricsGlowRandomRange", lyricsGlowRandomRange);
+        o.addProperty("lyricsPlayerRelative", lyricsPlayerRelative);
+        o.addProperty("lyricsFollowRotation", lyricsFollowRotation);
+        o.addProperty("lyricsGlowSmoothing", lyricsGlowSmoothing);
+        o.addProperty("lyricsViewMode", lyricsViewMode);
+        o.addProperty("lyricsViewAnchor", lyricsViewAnchor);
+        o.addProperty("lyricsViewDepth", lyricsViewDepth);
+        o.addProperty("lyricsCrosshairExclude", lyricsCrosshairExclude);
+        o.addProperty("lyricsScreenMargin", lyricsScreenMargin);
+        o.addProperty("lyricsViewSmoothing", lyricsViewSmoothing);
+        o.addProperty("lyricsFaceAlways", lyricsFaceAlways);
+        o.addProperty("lyricsFitScreen", lyricsFitScreen);
+        o.addProperty("lyricsAnimIn", lyricsAnimIn);
+        o.addProperty("lyricsAnimOut", lyricsAnimOut);
+        o.addProperty("lyricsAnimSpeed", lyricsAnimSpeed);
+        o.addProperty("lyricsBob", lyricsBob);
+        o.addProperty("lyricsPulse", lyricsPulse);
+        o.addProperty("lyricsFont", lyricsFont);
+        o.addProperty("lyricsFontSize", lyricsFontSize);
+        o.addProperty("glowIntensity", glowIntensity);
+        o.addProperty("glowRadius", glowRadius);
+        o.addProperty("hudPosition", hudPosition);
+        o.addProperty("hudLines", hudLines);
+        o.addProperty("hudPanel", hudPanel);
+        return o;
+    }
+
+    static void load() {
+        try {
+            if (!Files.exists(FILE)) return;
+            apply(JsonParser.parseString(Files.readString(FILE, StandardCharsets.UTF_8)).getAsJsonObject());
+        } catch (Throwable ignored) {
+            // a broken file simply leaves the defaults in place
         }
-        Vec3 look = client.player.getLookAngle();
-        Vec3 center = client.player.getEyePosition().add(look.scale(2.6)).add(0, -0.08, 0);
-        Vec3 right = look.cross(new Vec3(0, 1, 0)).normalize();
-        if (right.lengthSqr() < 0.0001) right = new Vec3(1, 0, 0);
-        Vec3 up = right.cross(look).normalize();
-        double w = 1.05, h = 0.62;
-        state = new PanelState(
-                center.add(right.scale(-w)).add(up.scale(h)),
-                center.add(right.scale(w)).add(up.scale(h)),
-                center.add(right.scale(w)).add(up.scale(-h)),
-                center.add(right.scale(-w)).add(up.scale(-h)));
     }
 
-    private static void draw(LevelRenderContext context) {
-        PanelState p = state;
-        if (p == null) return;
-        VertexFormat format = PIPELINE.getVertexFormatBinding(0);
-        if (format == null) return;
-        PrimitiveTopology topology = PIPELINE.getPrimitiveTopology();
-        StagedVertexBuffer.Draw draw = BUFFER.appendDraw(format, topology,
-                topology == PrimitiveTopology.QUADS ? RenderSystem.getProjectionType().vertexSorting() : null);
-        PoseStack poseStack = context.poseStack();
-        Vec3 camera = context.levelState().cameraRenderState.pos;
-        poseStack.pushPose();
-        poseStack.translate(-camera.x, -camera.y, -camera.z);
-        Matrix4fc matrix = poseStack.last().pose();
-        VertexConsumer v = BUFFER.getVertexBuilder(draw);
-        v.addVertex(matrix, (float)p.tl.x, (float)p.tl.y, (float)p.tl.z).setColor(0.38f, 0.62f, 0.82f, 0.34f);
-        v.addVertex(matrix, (float)p.tr.x, (float)p.tr.y, (float)p.tr.z).setColor(0.48f, 0.72f, 0.92f, 0.34f);
-        v.addVertex(matrix, (float)p.br.x, (float)p.br.y, (float)p.br.z).setColor(0.24f, 0.42f, 0.62f, 0.34f);
-        v.addVertex(matrix, (float)p.bl.x, (float)p.bl.y, (float)p.bl.z).setColor(0.32f, 0.52f, 0.72f, 0.34f);
-        poseStack.popPose();
-        BUFFER.upload();
-        StagedVertexBuffer.ExecuteInfo info = BUFFER.getExecuteInfo(draw);
-        if (info != null) execute(info);
-        BUFFER.endFrame();
-    }
-
-    private static void execute(StagedVertexBuffer.ExecuteInfo info) {
-        Minecraft client = Minecraft.getInstance();
-        GpuBufferSlice transforms = RenderSystem.getDynamicUniforms().writeTransform(
-                RenderSystem.getModelViewMatrixCopy(), COLOR, OFFSET, TEXTURE);
-        RenderTarget target = client.gameRenderer.mainRenderTarget();
-        GpuTextureView color = target.getColorTextureView();
-        if (color == null) return;
-        try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
-                () -> "Vision Browser world panel", color, Optional.empty(),
-                target.getDepthTextureView(), OptionalDouble.empty())) {
-            pass.setPipeline(RenderSystem.getCompiledPipeline(PIPELINE));
-            RenderSystem.bindDefaultUniforms(pass);
-            pass.setUniform("DynamicTransforms", transforms);
-            pass.setVertexBuffer(0, info.vertexBuffer().slice());
-            pass.setIndexBuffer(info.indexBuffer(), info.indexType());
-            pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
+    static void save() {
+        try {
+            Files.createDirectories(FILE.getParent());
+            Files.writeString(FILE, toJson().toString(), StandardCharsets.UTF_8);
+        } catch (Throwable ignored) {
+            // settings are a convenience; never break the game over them
         }
     }
 
-    private record PanelState(Vec3 tl, Vec3 tr, Vec3 br, Vec3 bl) {}
+    /** back to factory values for everything */
+    static void reset() {
+        apply(DEFAULTS);
+        FloatWindow.syncLockFromSettings();
+        save();
+    }
 }

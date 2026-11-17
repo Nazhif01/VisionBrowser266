@@ -20,6 +20,8 @@ public final class VisionBrowserClient implements ClientModInitializer {
     private static int activeTab = 0;
     private static KeyMapping toggleLyrics;
     private static KeyMapping openIsland;
+    private static KeyMapping syncEarlier;
+    private static KeyMapping syncLater;
 
     @Override
     public void onInitializeClient() {
@@ -38,12 +40,20 @@ public final class VisionBrowserClient implements ClientModInitializer {
         NameTagLyrics3D.register();
         ChatPanel.register();
         VisionMediaBridge.start();
+        MusicPlayer.register();
         toggleLyrics = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.visionbrowser.toggle_lyrics", InputConstants.Type.KEYBOARD, InputConstants.KEY_J, CATEGORY));
         openIsland = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.visionbrowser.island", InputConstants.Type.KEYBOARD, InputConstants.KEY_I, CATEGORY));
 
+        syncEarlier = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.visionbrowser.sync_earlier", InputConstants.Type.KEYBOARD, InputConstants.KEY_LBRACKET, CATEGORY));
+        syncLater = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.visionbrowser.sync_later", InputConstants.Type.KEYBOARD, InputConstants.KEY_RBRACKET, CATEGORY));
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            while (syncEarlier.consumeClick()) FloatingLyrics.nudge(50);
+            while (syncLater.consumeClick()) FloatingLyrics.nudge(-50);
             while (toggleLyrics.consumeClick()) FloatingLyrics.toggle();
             while (openIsland.consumeClick()) {
                 if (client.gui.screen() instanceof IslandScreen islandScreen) {
@@ -56,7 +66,9 @@ public final class VisionBrowserClient implements ClientModInitializer {
                 if (client.gui.screen() instanceof VisionBrowserScreen visionScreen) {
                     visionScreen.onClose();
                 } else if (client.gui.screen() == null || client.gui.screen() instanceof TitleScreen) {
-                    client.gui.setScreen(new VisionBrowserScreen(client.gui.screen()));
+                    client.gui.setScreen(VisionSettings.musicMode
+                            ? new MusicScreen(client.gui.screen())
+                            : new VisionBrowserScreen(client.gui.screen()));
                 }
             }
         });

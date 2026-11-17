@@ -30,8 +30,8 @@ final class FloatWindow {
     private static final int VIRT = 8192;                       // virtual texture size: UVs are normalised, real size is irrelevant
 
     private static boolean enabled, locked = true, screenOpen;
-    private static final float distance = 3.0f;
     private static double cx, cy, cz, rx = 1, rz = 0, nx = 0, nz = 1;
+    private static double rxb = 1, ryb = 0, rzb = 0, ux = 0, uy = 1, uz = 0;   // plane basis: right and up (tilts toward the camera when billboarding)
     private static boolean poseInit, faceInit;
     private static long enabledAt, lastNanos, toastUntil;
     private static String toast = "";
@@ -49,6 +49,13 @@ final class FloatWindow {
 
     static boolean isEnabled() { return enabled; }
     static boolean isLocked() { return locked; }
+    static void syncLockFromSettings() { locked = VisionSettings.floatLocked; }
+    static void toggleBillboard() {
+        VisionSettings.floatBillboard = !VisionSettings.floatBillboard;
+        VisionSettings.save();
+        faceInit = false;
+        say(VisionSettings.floatBillboard ? "Billboard ON: window faces you" : "Billboard OFF: window keeps its angle");
+    }
     static String status() { return status; }
 
     static void setEnabled(boolean on) {
@@ -91,6 +98,7 @@ final class FloatWindow {
     }
 
     private static void say(String text) {
+        if (!VisionSettings.floatToast) return;
         toast = text;
         toastUntil = System.currentTimeMillis() + 1800;
     }
@@ -143,20 +151,29 @@ final class FloatWindow {
             status = "Floating window: ok" + (locked ? " (locked)" : " (free)");
 
             // pose: follow the camera while locked, freeze when free
-            double tx = cp.x + lx * distance, ty = cp.y + ly * distance, tz = cp.z + lz * distance;
+            double distance = VisionSettings.floatDistance;
+            double tx = cp.x + lx * distance + rxv * VisionSettings.floatSide, ty = cp.y + ly * distance + VisionSettings.floatHeight,
+                    tz = cp.z + lz * distance + rzv * VisionSettings.floatSide;
             if (!poseInit) { cx = tx; cy = ty; cz = tz; poseInit = true; }
             if (locked) {
-                double k = 1.0 - Math.exp(-dt * 9.0);
+                double k = 1.0 - Math.exp(-dt * VisionSettings.floatFollowSpeed);
                 cx += (tx - cx) * k; cy += (ty - cy) * k; cz += (tz - cz) * k;
             }
-            if (locked || !faceInit) {
+            if (VisionSettings.floatBillboard || !faceInit) {
                 double dx = cp.x - cx, dz = cp.z - cz, len = Math.hypot(dx, dz);
                 if (len > 0.3) { nx = dx / len; nz = dz / len; rx = nz; rz = -nx; faceInit = true; }
             }
-            if ((cp.x - cx) * nx + (cp.z - cz) * nz <= 0) return; // seen from behind
+            if (VisionSettings.floatBillboard) {
+                // full billboard: the plane stays perpendicular to the line of sight, so it never looks squashed when looking up or down
+                double[] bs = ViewMath.billboard(cp, cx, cy, cz, rx, rz);
+                rxb = bs[0]; ryb = bs[1]; rzb = bs[2]; ux = bs[3]; uy = bs[4]; uz = bs[5];
+            } else {
+                if ((cp.x - cx) * nx + (cp.z - cz) * nz <= 0) return; // seen from behind
+                rxb = rx; ryb = 0; rzb = rz; ux = 0; uy = 1; uz = 0;
+            }
 
             double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
-            float fade = Math.min(1f, (now - enabledAt) / 350f) * (float) Math.max(0, Math.min(1, (dist - 0.5) / 1.0));
+            float fade = VisionSettings.floatOpacity * Math.min(1f, (now - enabledAt) / 350f) * (float) Math.max(0, Math.min(1, (dist - 0.5) / 1.0));
             int a = Math.round(fade * 255f);
             if (a < 4) return;
 
@@ -171,9 +188,9 @@ final class FloatWindow {
                     g.blit(RenderPipelines.GUI_TEXTURED, tex, x, top, u0 * VIRT, t0 * VIRT, step, height,
                             Math.max(1, Math.round((u1 - u0) * VIRT)), Math.max(1, Math.round((t1 - t0) * VIRT)), VIRT, VIRT, color));
             // lock indicator capsule under the window: bright accent = locked, white = free
-            double barY = cy - (hh + 0.14);
+            double barOff = hh + 0.14;
             int barColor = locked ? ((a * 0xB0 / 255 << 24) | accent | 0x303030) : ((a * 0x60 / 255 << 24) | 0xFFFFFF);
-            capsule(g, c, barY, 0.16f, 0.018f, barColor);
+            if (VisionSettings.floatLockBar) capsule(g, c, cx - ux * barOff, cy - uy * barOff, cz - uz * barOff, 0.16f, 0.018f, barColor);
         } catch (Throwable error) {
             status = "Floating window: error (" + error.getClass().getSimpleName() + ")";
         }
@@ -188,19 +205,21 @@ final class FloatWindow {
     /** one rounded quad of the window plane, enlarged by margin (blocks) */
     private static void layer(GuiGraphicsExtractor g, Ctx c, double centerY, float hw, float hh, float margin, int step, Painter p) {
         float w = hw + margin, h = hh + margin;
-        float rv = Math.min(0.5f, (0.14f * hh + margin) / (2f * h));
+        float rv = Math.min(0.5f, (VisionSettings.floatCorner * hh + margin) / (2f * h));
         quad(c, cx, centerY, cz, w, h, rv, w / h, step, p);
     }
 
-    private static void capsule(GuiGraphicsExtractor g, Ctx c, double centerY, float hw, float hh, int argb) {
-        quad(c, cx, centerY, cz, hw, hh, 0.5f, hw / hh, 1, fillPainter(g, argb));
+    private static void capsule(GuiGraphicsExtractor g, Ctx c, double qx, double qy, double qz, float hw, float hh, int argb) {
+        quad(c, qx, qy, qz, hw, hh, 0.5f, hw / hh, 1, fillPainter(g, argb));
     }
 
     private static void quad(Ctx c, double qx, double qy, double qz, float hw, float hh, float rv, float aspect, int step, Painter p) {
         float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}};   // TL, TR, BR, BL
         float[] sx = new float[4], sy = new float[4], sw = new float[4];
         for (int i = 0; i < 4; i++) {
-            double wx = qx + rx * corner[i][0], wy = qy + corner[i][1], wz = qz + rz * corner[i][0];
+            double wx = qx + rxb * corner[i][0] + ux * corner[i][1];
+            double wy = qy + ryb * corner[i][0] + uy * corner[i][1];
+            double wz = qz + rzb * corner[i][0] + uz * corner[i][1];
             float[] n = ndc(c.vp(), wx - c.cp().x, wy - c.cp().y, wz - c.cp().z);
             if (n[2] < 0.1f) return;
             sx[i] = (n[0] * c.signX() * 0.5f + 0.5f) * c.gw();

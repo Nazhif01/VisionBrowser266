@@ -28,6 +28,8 @@ final class VisionMediaBridge {
     private static final int SCRIPT_VERSION = 7;
 
     private static volatile String mediaTabId = "";
+    private static final java.util.Map<String, Boolean> TAB_PLAYING = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final String PAUSE_JS = "(function(){document.querySelectorAll('video,audio').forEach(function(m){try{m.pause();}catch(e){}});return 0;})()";
     private static volatile String trackTitle = "";
     private static volatile String artist = "";
     private static volatile String album = "";
@@ -137,6 +139,16 @@ final class VisionMediaBridge {
             String t = str(o, "t");
             if (t.isBlank()) return;
             boolean on = o.has("on") && o.get("on").getAsBoolean();
+            // only one tab may play: the tab that starts last wins, every other playing tab (e.g. the hidden music tab) is paused
+            Boolean was = TAB_PLAYING.put(tabId, on);
+            if (on && !Boolean.TRUE.equals(was)) {
+                for (String other : new ArrayList<>(TAB_PLAYING.keySet())) {
+                    if (!other.equals(tabId) && Boolean.TRUE.equals(TAB_PLAYING.get(other))) {
+                        TAB_PLAYING.put(other, false);
+                        RemoteBrowser.eval(other, PAUSE_JS, false, true);
+                    }
+                }
+            }
             if (!on && !mediaTabId.isEmpty() && !mediaTabId.equals(tabId)) return; // another tab is the active source
             long now = System.currentTimeMillis();
             String a = str(o, "a");

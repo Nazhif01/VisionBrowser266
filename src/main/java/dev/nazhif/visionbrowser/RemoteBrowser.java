@@ -256,7 +256,7 @@ final class RemoteBrowser {
             if (last) {
                 String msg = buf.toString();
                 buf.setLength(0);
-                try { handle(msg); } catch (Throwable ignored) { }
+                try { handle(msg, probeTab); } catch (Throwable ignored) { }
             }
             webSocket.request(1);
             return null;
@@ -276,7 +276,7 @@ final class RemoteBrowser {
         }
     }
 
-    private static void handle(String msg) throws Exception {
+    private static void handle(String msg, String probeTab) throws Exception {
         JsonObject o = JsonParser.parseString(msg).getAsJsonObject();
         if (o.has("id") && !o.has("method")) {
             CompletableFuture<JsonObject> f = WAITING.remove(o.get("id").getAsInt());
@@ -284,6 +284,13 @@ final class RemoteBrowser {
             return;
         }
         if (!o.has("method")) return;
+        if (probeTab != null && "Page.javascriptDialogOpening".equals(o.get("method").getAsString())) {
+            // helper tabs (music) must never stop on a "Leave site?" prompt
+            JsonObject a = new JsonObject();
+            a.addProperty("accept", true);
+            call(probeTab, "Page.handleJavaScriptDialog", a);
+            return;
+        }
         if (!"Page.screencastFrame".equals(o.get("method").getAsString())) return;
         JsonObject p = o.getAsJsonObject("params");
         JsonObject ack = new JsonObject();
@@ -361,6 +368,12 @@ final class RemoteBrowser {
             w = HTTP.newWebSocketBuilder().connectTimeout(Duration.ofSeconds(3))
                     .buildAsync(URI.create(url), new Listener(tabId)).get(4, TimeUnit.SECONDS);
             PROBES.put(tabId, w);
+            if (HIDDEN.contains(tabId)) {
+                JsonObject en = new JsonObject();
+                en.addProperty("id", MSG_ID.getAndIncrement());
+                en.addProperty("method", "Page.enable");
+                synchronized (w) { w.sendText(en.toString(), true).get(3, TimeUnit.SECONDS); }
+            }
             return w;
         }
     }
@@ -463,6 +476,13 @@ final class RemoteBrowser {
         JsonObject p = new JsonObject();
         p.addProperty("expression", js);
         send("Runtime.evaluate", p);
+    }
+
+    /** browser-level navigation of any tab (no page script, so no "Leave site?" prompt) */
+    static void navigateTab(String tabId, String url) {
+        JsonObject p = new JsonObject();
+        p.addProperty("url", url);
+        call(tabId, "Page.navigate", p);
     }
 
     static void back() { eval("history.back()"); }

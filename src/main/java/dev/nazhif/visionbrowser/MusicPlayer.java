@@ -141,7 +141,7 @@ final class MusicPlayer {
             return;
         }
         try {
-            RemoteBrowser.eval(tabId, "location.href=" + new JsonPrimitive(HOME + "/watch?v=" + r.id()) + ";0", false, true);
+            RemoteBrowser.navigateTab(tabId, HOME + "/watch?v=" + r.id());
             status = "Starting: " + r.title();
             activateTries = 4;
             nextActivateAt = System.currentTimeMillis() + 3500;

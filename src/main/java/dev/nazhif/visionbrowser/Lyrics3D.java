@@ -87,7 +87,7 @@ final class Lyrics3D {
             if (VisionSettings.lyricsViewMode) {
                 long nowMs = System.currentTimeMillis();
                 for (Line old : lines) if (old.exitAt == 0) old.exitAt = nowMs;
-                Line v = new Line(text, cp.x, cp.y, cp.z, 1, 0, 0, 1, 0, 0, 0, 0, yaw, pitch);
+                Line v = new Line(text, cp.x, cp.y, cp.z, 1, 0, 0, 1, 0, 0, 0, yaw, pitch);
                 v.view = true;
                 lines.add(v);
                 while (lines.size() > VisionSettings.lyricsMaxLines) release(lines.remove(0));

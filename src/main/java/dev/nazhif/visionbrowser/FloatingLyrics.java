@@ -173,6 +173,11 @@ final class FloatingLyrics {
         message = "";
     }
 
+    private static void hideLines(String key) {
+        NameTagLyrics3D.update(key, "", 0);
+        Lyrics3D.show(key, "");
+    }
+
     private static void render(GuiGraphicsExtractor graphics, DeltaTracker tickCounter) {
         if (!enabled) return;
         Minecraft client = Minecraft.getInstance();
@@ -203,7 +208,22 @@ final class FloatingLyrics {
             if (current.get(i).time() <= position) active = i;
             else break;
         }
-        if (active < 0) active = 0;
+        boolean glowPath = mode == VisionSettings.MODE_GLOW || (mode == VisionSettings.MODE_TEXT && !NameTagLyrics3D.usable());
+        if (active < 0) {
+            // before the first vocal line: show nothing (no early first line)
+            if (mode == VisionSettings.MODE_HUD) { Lyrics3D.clear(); NameTagLyrics3D.clear(); return; }
+            hideLines(song + "#pre");
+            if (glowPath) Lyrics3D.render(graphics, client);
+            return;
+        }
+        double sinceCur = position - current.get(active).time();
+        double gapLen = active + 1 < current.size() ? current.get(active + 1).time() - current.get(active).time() : 1e9;
+        if (mode != VisionSettings.MODE_HUD && sinceCur > 6.5 && gapLen > 12) {
+            // long instrumental gap or after the last line: let the lyric leave instead of hanging around
+            hideLines(song + "#gap" + active);
+            if (glowPath) Lyrics3D.render(graphics, client);
+            return;
+        }
         String key = song + "#" + active;
 
         if (mode == VisionSettings.MODE_HUD) {

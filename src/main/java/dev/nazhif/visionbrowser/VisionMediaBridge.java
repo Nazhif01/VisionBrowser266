@@ -347,6 +347,82 @@ final class VisionMediaBridge {
         return out;
     }
 
+    private record Plain(String label, double duration, String text) { }
+
+    private static List<Plain> searchPlain(String query, String artistHint) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://lrclib.net/api/search?" + query))
+                .timeout(Duration.ofSeconds(12))
+                .header("User-Agent", "VisionBrowser/0.1.0 (Minecraft Fabric mod)")
+                .GET().build();
+        HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) return List.of();
+        List<Plain> out = new ArrayList<>();
+        String ah = artistHint == null ? "" : artistHint.toLowerCase(Locale.ROOT);
+        for (JsonElement el : JsonParser.parseString(response.body()).getAsJsonArray()) {
+            JsonObject j = el.getAsJsonObject();
+            String plain = j.has("plainLyrics") && !j.get("plainLyrics").isJsonNull() ? j.get("plainLyrics").getAsString() : "";
+            if (plain.isBlank()) continue;
+            if (!ah.isEmpty() && !str(j, "artistName").toLowerCase(Locale.ROOT).contains(ah)) continue;
+            out.add(new Plain(str(j, "trackName") + " - " + str(j, "artistName"), num(j, "duration"), plain));
+            if (out.size() >= 3) break;
+        }
+        return out;
+    }
+
+    private static Plain lyricsOvh(String title, String artist) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.lyrics.ovh/v1/" + enc(artist).replace("+", "%20") + "/" + enc(title).replace("+", "%20")))
+                    .timeout(Duration.ofSeconds(12)).header("User-Agent", "VisionBrowser/0.1.0").GET().build();
+            HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) return null;
+            JsonObject j = JsonParser.parseString(response.body()).getAsJsonObject();
+            String text = str(j, "lyrics");
+            return text.isBlank() ? null : new Plain(title + " - " + artist, 0, text);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * Songs without timed lyrics: the plain text is spread over the song so a line still appears roughly when it is sung.
+     * Time per line follows its length, verse breaks add a short pause, and there is an intro/outro margin. Rough by nature:
+     * fine-tune with the per-song offset or tap sync.
+     */
+    static String estimateLrc(String plain, double durationSeconds) {
+        double total = durationSeconds > 20 ? durationSeconds : 200;
+        List<String> lines = new ArrayList<>();
+        List<Double> gaps = new ArrayList<>();
+        boolean pendingGap = false;
+        for (String raw : plain.split("\\R")) {
+            String l = raw.trim();
+            if (l.matches("^\\[[^\\]]*\\]$") || l.matches("^\\([^)]*\\)$") && l.length() < 14) continue;   // [Chorus] style headers
+            if (l.isEmpty()) { pendingGap = true; continue; }
+            lines.add(l);
+            gaps.add(pendingGap && lines.size() > 1 ? 1.0 : 0.0);
+            pendingGap = false;
+        }
+        if (lines.isEmpty()) return "";
+        double intro = Math.min(18.0, Math.max(6.0, total * 0.06)), outro = Math.min(15.0, total * 0.05);
+        double span = Math.max(10.0, total - intro - outro);
+        double weightSum = 0;
+        double[] w = new double[lines.size()];
+        for (int i = 0; i < w.length; i++) {
+            w[i] = Math.max(10, lines.get(i).length()) + gaps.get(i) * 14;
+            weightSum += w[i];
+        }
+        StringBuilder sb = new StringBuilder();
+        double t = intro;
+        for (int i = 0; i < w.length; i++) {
+            t += gaps.get(i) * 14 / weightSum * span;
+            int m = (int) (t / 60);
+            sb.append(String.format(Locale.ROOT, "[%02d:%05.2f] %s%n", m, t - m * 60, lines.get(i)));
+            t += Math.max(10, lines.get(i).length()) / weightSum * span;
+        }
+        return sb.toString();
+    }
+
     private static JsonObject getJson(String url) throws Exception {
         HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(12))
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36")
@@ -411,8 +487,26 @@ final class VisionMediaBridge {
                 if (found.size() < 2) found.addAll(netease(ct.isEmpty() ? title : ct, ca.isEmpty() ? artist : ca));
                 if (!requestKey.equals(lastTrackKey)) return;
                 if (found.isEmpty()) {
-                    FloatingLyrics.setUnavailable("No synchronized lyrics found");
-                    return;
+                    // no timed lyrics anywhere: build timing from plain lyrics (LRCLIB text, then lyrics.ovh)
+                    List<Plain> plains = new ArrayList<>();
+                    for (String[] at : attempts) {
+                        plains.addAll(searchPlain(at[0], at[1]));
+                        if (!plains.isEmpty()) break;
+                    }
+                    if (plains.isEmpty()) {
+                        Plain ovh = lyricsOvh(ct.isEmpty() ? title : ct, ca.isEmpty() ? artist : ca);
+                        if (ovh != null) plains.add(ovh);
+                    }
+                    if (!requestKey.equals(lastTrackKey)) return;
+                    long n = -1000000L;
+                    for (Plain p : plains) {
+                        String lrc = estimateLrc(p.text(), duration > 0 ? duration : p.duration());
+                        if (!lrc.isBlank()) found.add(new FloatingLyrics.Candidate(n--, "Auto-timed: " + p.label(), p.duration(), lrc));
+                    }
+                    if (found.isEmpty()) {
+                        FloatingLyrics.setUnavailable("No lyrics found");
+                        return;
+                    }
                 }
                 if (duration > 0) {
                     List<FloatingLyrics.Candidate> sorted = new ArrayList<>(found);

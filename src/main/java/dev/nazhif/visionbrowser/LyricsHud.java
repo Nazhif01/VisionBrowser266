@@ -30,8 +30,9 @@ final class LyricsHud {
 
         String key = songKey + "#" + active;
         if (!key.equals(lastKey)) { lastKey = key; changedAt = now; }
-        float t = Math.min(1f, (now - changedAt) / 200f);              // 200 ms line-change transition
+        float t = Math.min(1f, (now - changedAt) / (float) LyricAnim.inMs());
         float ease = 1f - (1f - t) * (1f - t);
+        LyricAnim.Pose anim = LyricAnim.combine(LyricAnim.idle(now, changedAt), LyricAnim.enter(VisionSettings.lyricsAnimIn, t));
 
         // active text, or an instrumental countdown when the singer is silent for a while
         String activeText = cur.text();
@@ -69,14 +70,24 @@ final class LyricsHud {
                 String raw = i == 0 ? activeText : lines.get(active + i).text();
                 if (raw.isBlank()) raw = "\u266b";
                 boolean isActive = i == 0;
-                int alpha = isActive ? Math.round(80 + 175 * ease) : Math.round((200 - i * 38) * (0.55f + 0.45f * ease));
+                int alpha = isActive ? Math.round(255 * Math.max(0.05f, anim.alpha())) : Math.round((200 - i * 38) * (0.55f + 0.45f * ease));
                 alpha = Math.max(40, Math.min(255, alpha));
                 String text = DynamicIsland.ellipsize(font, raw, PANEL_W - 12);
                 if (isActive) text = "\u00a7l" + text;
                 int color = (alpha << 24) | (isActive ? activeRgb : 0xD6DAE8);
                 int tx = (PANEL_W - font.width(text)) / 2;
                 int ty = PAD + i * LINE_H + (isActive ? 0 : slide - 0);
-                g.text(font, text, tx, ty, color, true);
+                if (isActive) {
+                    float cxm = tx + font.width(text) / 2f, cym = ty + 4f;
+                    pose.pushMatrix();
+                    pose.translate(cxm + anim.dx() * LINE_H, cym - anim.dy() * LINE_H);
+                    pose.scale(anim.scale(), anim.scale());
+                    pose.translate(-cxm, -cym);
+                    g.text(font, text, tx, ty, color, true);
+                    pose.popMatrix();
+                } else {
+                    g.text(font, text, tx, ty, color, true);
+                }
             }
         } finally {
             pose.popMatrix();

@@ -14,6 +14,12 @@ import java.util.concurrent.atomic.AtomicLong;
 /** Minimal, independent floating synced-lyrics HUD. */
 final class FloatingLyrics {
     record Line(double time, String text) { }
+    record Candidate(long id, String label, double duration, String synced) { }
+    private static volatile List<Candidate> candidates = List.of();
+    private static volatile int candidateIndex;
+    private static volatile String trackKey = "";
+    private static volatile String toastText = "";
+    private static volatile long toastUntil;
     private static volatile List<Line> lines = List.of();
     private static volatile String song = "";
     private static volatile String artist = "";
@@ -44,6 +50,9 @@ final class FloatingLyrics {
         String key = title + "|" + artist;
         if (key.equals(requestedTrack)) return;
         requestedTrack = key;
+        trackKey = key.toLowerCase(java.util.Locale.ROOT);
+        candidates = List.of();
+        candidateIndex = 0;
         long id = requestId.incrementAndGet();
         lines = List.of();
         song = title;
@@ -55,10 +64,82 @@ final class FloatingLyrics {
     static void clear() {
         requestId.incrementAndGet();
         requestedTrack = "";
+        trackKey = "";
+        candidates = List.of();
         lines = List.of();
         song = "";
         artist = "";
         message = "Play music in Vision Browser";
+    }
+
+    static String trackKey() { return trackKey; }
+    static int candidateCount() { return candidates.size(); }
+
+    static String candidateLabel() {
+        List<Candidate> c = candidates;
+        if (c.isEmpty()) return "none";
+        Candidate cur = c.get(Math.min(candidateIndex, c.size() - 1));
+        double media = VisionMediaBridge.durationSeconds();
+        String diff = cur.duration() > 0 && media > 0 ? String.format(java.util.Locale.ROOT, " %+.0fs", cur.duration() - media) : "";
+        return (candidateIndex + 1) + "/" + c.size() + diff;
+    }
+
+    static void setCandidates(String title, String artistName, List<Candidate> list) {
+        candidates = list;
+        long saved = LyricSync.candidateId(trackKey);
+        int idx = 0;
+        for (int i = 0; i < list.size(); i++) if (saved != 0 && list.get(i).id() == saved) { idx = i; break; }
+        candidateIndex = idx;
+        if (list.isEmpty()) { setUnavailable("No synchronized lyrics found"); return; }
+        setLyrics(title, artistName, list.get(idx).synced());
+    }
+
+    /** switch to another version of the lyrics (they differ in timing); the choice is remembered for this song */
+    static void cycleCandidate(int dir) {
+        List<Candidate> c = candidates;
+        if (c.size() < 2) { toast("Only one lyric version found"); return; }
+        candidateIndex = Math.floorMod(candidateIndex + dir, c.size());
+        Candidate cur = c.get(candidateIndex);
+        LyricSync.setCandidate(trackKey, cur.id());
+        LyricSync.save();
+        setLyrics(song, artist, cur.synced());
+        modeChanged();
+        toast("Lyric version " + candidateLabel());
+    }
+
+    static void toast(String text) {
+        toastText = text;
+        toastUntil = System.currentTimeMillis() + 1600;
+    }
+
+    /** delta in ms: + shows lyrics earlier, - later; saved for this song */
+    static void nudge(int deltaMs) {
+        if (trackKey.isEmpty()) return;
+        int v = Math.max(-5000, Math.min(5000, LyricSync.offsetMs(trackKey) + deltaMs));
+        LyricSync.setOffset(trackKey, v);
+        LyricSync.save();
+        toast(String.format(java.util.Locale.ROOT, "Lyric sync %+d ms (saved for this song)", v));
+    }
+
+    /** the lyric line closest to the current moment is declared to start right now; the song offset is set to match and saved */
+    static void tapSync() {
+        List<Line> cur = lines;
+        if (cur.isEmpty() || trackKey.isEmpty()) return;
+        double lp = VisionMediaBridge.lyricPosition(), raw = VisionMediaBridge.positionSeconds();
+        Line best = cur.get(0);
+        for (Line l : cur) if (Math.abs(l.time() - lp) < Math.abs(best.time() - lp)) best = l;
+        int off = (int) Math.round((best.time() - raw) * 1000.0 - VisionSettings.lyricsGlobalOffsetMs);
+        off = Math.max(-5000, Math.min(5000, off));
+        LyricSync.setOffset(trackKey, off);
+        LyricSync.save();
+        toast(String.format(java.util.Locale.ROOT, "Synced: %+d ms (saved for this song)", off));
+    }
+
+    static void resetSongSync() {
+        LyricSync.setOffset(trackKey, 0);
+        LyricSync.setCandidate(trackKey, 0);
+        LyricSync.save();
+        toast("Song sync reset");
     }
 
     static void setUnavailable(String text) {
@@ -92,10 +173,19 @@ final class FloatingLyrics {
         message = "";
     }
 
+    private static void hideLines(String key) {
+        NameTagLyrics3D.update(key, "", 0);
+        Lyrics3D.show(key, "");
+    }
+
     private static void render(GuiGraphicsExtractor graphics, DeltaTracker tickCounter) {
         if (!enabled) return;
         Minecraft client = Minecraft.getInstance();
         if (client.player == null) return;
+        if (System.currentTimeMillis() < toastUntil) {
+            String t = toastText;
+            graphics.text(client.font, t, (client.getWindow().getGuiScaledWidth() - client.font.width(t)) / 2, 62, 0xFFFFFFFF, true);
+        }
         List<Line> current = lines;
         int screenWidth = client.getWindow().getGuiScaledWidth();
         int screenHeight = client.getWindow().getGuiScaledHeight();
@@ -112,13 +202,28 @@ final class FloatingLyrics {
             return;
         }
 
-        double position = VisionMediaBridge.positionSeconds();
+        double position = VisionMediaBridge.lyricPosition();
         int active = -1;
         for (int i = 0; i < current.size(); i++) {
             if (current.get(i).time() <= position) active = i;
             else break;
         }
-        if (active < 0) active = 0;
+        boolean glowPath = mode == VisionSettings.MODE_GLOW || (mode == VisionSettings.MODE_TEXT && !NameTagLyrics3D.usable());
+        if (active < 0) {
+            // before the first vocal line: show nothing (no early first line)
+            if (mode == VisionSettings.MODE_HUD) { Lyrics3D.clear(); NameTagLyrics3D.clear(); return; }
+            hideLines(song + "#pre");
+            if (glowPath) Lyrics3D.render(graphics, client);
+            return;
+        }
+        double sinceCur = position - current.get(active).time();
+        double gapLen = active + 1 < current.size() ? current.get(active + 1).time() - current.get(active).time() : 1e9;
+        if (mode != VisionSettings.MODE_HUD && sinceCur > 6.5 && gapLen > 12) {
+            // long instrumental gap or after the last line: let the lyric leave instead of hanging around
+            hideLines(song + "#gap" + active);
+            if (glowPath) Lyrics3D.render(graphics, client);
+            return;
+        }
         String key = song + "#" + active;
 
         if (mode == VisionSettings.MODE_HUD) {

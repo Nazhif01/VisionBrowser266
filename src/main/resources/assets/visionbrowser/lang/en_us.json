@@ -2,5 +2,7 @@
   "key.category.visionbrowser.main": "Vision Browser",
   "key.visionbrowser.open": "Open / close browser",
   "key.visionbrowser.toggle_lyrics": "Toggle floating lyrics",
-  "key.visionbrowser.island": "Open Dynamic Island controls"
+  "key.visionbrowser.island": "Open Dynamic Island controls",
+  "key.visionbrowser.sync_earlier": "Lyrics earlier (+50 ms)",
+  "key.visionbrowser.sync_later": "Lyrics later (-50 ms)"
 }

@@ -28,6 +28,7 @@ final class MusicPlayer {
     private static volatile List<Result> results = List.of();
     private static volatile String query = "";
     private static volatile String status = "Type a song and press Enter";
+    private static volatile String hintTitle = "", hintArtist = "";
     private static boolean searching;
     private static int searchTries;
     private static long searchSentAt;
@@ -43,6 +44,9 @@ final class MusicPlayer {
     static List<Result> results() { return results; }
     static String status() { return status; }
     static String query() { return query; }
+    /** title/artist of the song last started from the search list (cleaner than the page metadata), used as an extra lyric lookup */
+    static String hintTitle() { return hintTitle; }
+    static String hintArtist() { return hintArtist; }
     static boolean active() { return browser != null; }
 
     static List<RinkuBrowser> browsers() {
@@ -136,6 +140,8 @@ final class MusicPlayer {
         RinkuBrowser b = ensure();
         if (b == null) return;
         try {
+            hintTitle = r.title();
+            hintArtist = r.artist();
             b.loadURL(HOME + "/watch?v=" + r.id());
             status = "Starting: " + r.title();
             activateTries = 4;

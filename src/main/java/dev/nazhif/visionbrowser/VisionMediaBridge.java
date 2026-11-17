@@ -31,7 +31,7 @@ import java.util.Locale;
  */
 final class VisionMediaBridge {
     private static final String PREFIX = "__VISION_MEDIA__";
-    private static final int SCRIPT_VERSION = 5;
+    private static final int SCRIPT_VERSION = 6;
 
     private static volatile boolean handlerRegistered;
     private static volatile CefBrowser mediaBrowser;
@@ -65,7 +65,13 @@ final class VisionMediaBridge {
             + "function el(){var c=[document.querySelector('video'),document.querySelector('audio')];"
             + "for(var i=0;i<c.length;i++){if(c[i]&&c[i].readyState>0)return c[i];}return c[0]||c[1];}"
             + "function art(m){try{var a=m&&m.artwork;if(a&&a.length){return a[a.length-1].src||'';}}catch(e){}return '';}"
-            + "function scan(){try{if(window.__vmSP){var sp=window.__vmSP;window.__vmSP=null;document.title=sp;return;}var v=el();if(!v)return;"
+            + "function ads(){try{var p=document.getElementById('movie_player');"
+            + "var ad=!!((p&&p.classList.contains('ad-showing'))||document.querySelector('.ad-showing'));"
+            + "var v=document.querySelector('video');"
+            + "if(ad){var b=document.querySelector('.ytp-skip-ad-button,.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-ad-skip-button-container button');if(b)b.click();"
+            + "if(v&&!v.muted){v.muted=true;window.__vmAdMute=true;}}"
+            + "else if(window.__vmAdMute){window.__vmAdMute=false;if(v)v.muted=false;}}catch(e){}}"
+            + "function scan(){try{ads();if(window.__vmSP){var sp=window.__vmSP;window.__vmSP=null;document.title=sp;return;}var v=el();if(!v)return;"
             + "var m=navigator.mediaSession&&navigator.mediaSession.metadata;"
             + "var t=(m&&m.title)||'',a=(m&&m.artist)||'',al=(m&&m.album)||'';"
             + "if(!t){var x=document.querySelector('ytmusic-player-bar .title');if(x)t=(x.textContent||'').trim();}"
@@ -318,7 +324,7 @@ final class VisionMediaBridge {
         return r.replaceAll("\\s+", " ").trim();
     }
 
-    private static List<FloatingLyrics.Candidate> search(String query) throws Exception {
+    private static List<FloatingLyrics.Candidate> search(String query, String artistHint) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://lrclib.net/api/search?" + query))
                 .timeout(Duration.ofSeconds(12))
@@ -328,10 +334,12 @@ final class VisionMediaBridge {
         if (response.statusCode() == 404) return List.of();
         if (response.statusCode() != 200) throw new java.io.IOException("lrclib " + response.statusCode());
         List<FloatingLyrics.Candidate> out = new ArrayList<>();
+        String ah = artistHint == null ? "" : artistHint.toLowerCase(Locale.ROOT);
         for (JsonElement el : JsonParser.parseString(response.body()).getAsJsonArray()) {
             JsonObject j = el.getAsJsonObject();
             String synced = j.has("syncedLyrics") && !j.get("syncedLyrics").isJsonNull() ? j.get("syncedLyrics").getAsString() : "";
             if (synced.isBlank()) continue;
+            if (!ah.isEmpty() && !str(j, "artistName").toLowerCase(Locale.ROOT).contains(ah)) continue;
             out.add(new FloatingLyrics.Candidate(j.has("id") ? j.get("id").getAsLong() : 0L,
                     str(j, "trackName") + " - " + str(j, "artistName"), num(j, "duration"), synced));
             if (out.size() >= 10) break;
@@ -339,15 +347,69 @@ final class VisionMediaBridge {
         return out;
     }
 
+    private static JsonObject getJson(String url) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(12))
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36")
+                .header("Referer", "https://music.163.com/").GET().build();
+        HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) throw new java.io.IOException("http " + response.statusCode());
+        return JsonParser.parseString(response.body()).getAsJsonObject();
+    }
+
+    /** second lyric source for songs LRCLIB does not have (timed lyrics, picked by title/artist match) */
+    private static List<FloatingLyrics.Candidate> netease(String title, String artist) {
+        List<FloatingLyrics.Candidate> out = new ArrayList<>();
+        try {
+            String t = clean(title).toLowerCase(Locale.ROOT), a = clean(artist).toLowerCase(Locale.ROOT);
+            JsonObject s = getJson("https://music.163.com/api/search/get/web?csrf_token=&hlpretag=&hltag=&s=" + enc(clean(title) + " " + clean(artist))
+                    + "&type=1&offset=0&total=true&limit=6");
+            if (!s.has("result") || !s.getAsJsonObject("result").has("songs")) return out;
+            for (JsonElement el : s.getAsJsonObject("result").getAsJsonArray("songs")) {
+                JsonObject song = el.getAsJsonObject();
+                String name = str(song, "name");
+                String by = song.has("artists") && song.getAsJsonArray("artists").size() > 0
+                        ? str(song.getAsJsonArray("artists").get(0).getAsJsonObject(), "name") : "";
+                String nl = name.toLowerCase(Locale.ROOT), bl = by.toLowerCase(Locale.ROOT);
+                boolean titleOk = !t.isEmpty() && (nl.contains(t) || t.contains(nl));
+                boolean artistOk = a.isEmpty() || bl.contains(a) || a.contains(bl);
+                if (!titleOk || !artistOk) continue;
+                long id = song.get("id").getAsLong();
+                JsonObject l = getJson("https://music.163.com/api/song/lyric?id=" + id + "&lv=1&kv=1&tv=-1");
+                String lrc = l.has("lrc") && l.getAsJsonObject("lrc").has("lyric") ? l.getAsJsonObject("lrc").get("lyric").getAsString() : "";
+                if (!lrc.contains("[0")) continue;
+                lrc = lrc.replaceAll("(?m)^\\[[^\\]]*\\]\\s*(\u4f5c\u8bcd|\u4f5c\u66f2|\u7f16\u66f2|\u5236\u4f5c\u4eba|\u6df7\u97f3|\u6bcd\u5e26|\u5f55\u97f3|\u76d1\u5236|\u8bcd|\u66f2)\\s*[:\uff1a].*$", "")
+                        .replaceAll("(?m)^\\{.*$", "");
+                double dur = song.has("duration") ? song.get("duration").getAsDouble() / 1000.0 : 0;
+                out.add(new FloatingLyrics.Candidate(-id, "NetEase: " + name + " - " + by, dur, lrc));
+                if (out.size() >= 3) break;
+            }
+        } catch (Throwable ignored) { }
+        return out;
+    }
+
     /** looks up every synced version of the song, so the one whose length matches the playing track (best timing) can be used */
     static void fetchLyrics(String title, String artist, double duration) {
         final String requestKey = (title + "|" + artist).toLowerCase(Locale.ROOT);
+        final String hintT = MusicPlayer.hintTitle(), hintA = MusicPlayer.hintArtist();
         Thread worker = new Thread(() -> {
             try {
-                List<FloatingLyrics.Candidate> found = search("track_name=" + enc(title) + "&artist_name=" + enc(artist));
-                if (found.isEmpty()) found = search("track_name=" + enc(clean(title)) + "&artist_name=" + enc(clean(artist)));
-                if (found.isEmpty()) found = search("q=" + enc(clean(title) + " " + clean(artist)));
+                String ct = clean(title), ca = clean(artist);
+                List<FloatingLyrics.Candidate> found = new ArrayList<>();
+                java.util.Set<Long> seen = new java.util.HashSet<>();
+                List<String[]> attempts = new ArrayList<>();
+                attempts.add(new String[]{"track_name=" + enc(title) + "&artist_name=" + enc(artist), null});
+                attempts.add(new String[]{"track_name=" + enc(ct) + "&artist_name=" + enc(ca), null});
+                if (!hintT.isEmpty()) attempts.add(new String[]{"track_name=" + enc(clean(hintT)) + "&artist_name=" + enc(clean(hintA)), null});
+                attempts.add(new String[]{"q=" + enc(ct + " " + ca), null});
+                attempts.add(new String[]{"q=" + enc(ct), ca.toLowerCase(Locale.ROOT)});
+                attempts.add(new String[]{"track_name=" + enc(ct), ca.toLowerCase(Locale.ROOT)});
+                for (String[] at : attempts) {
+                    for (FloatingLyrics.Candidate c : search(at[0], at[1])) if (seen.add(c.id())) found.add(c);
+                    if (!found.isEmpty()) break;
+                }
                 if (!requestKey.equals(lastTrackKey)) return; // track changed while the request was running
+                if (found.size() < 2) found.addAll(netease(ct.isEmpty() ? title : ct, ca.isEmpty() ? artist : ca));
+                if (!requestKey.equals(lastTrackKey)) return;
                 if (found.isEmpty()) {
                     FloatingLyrics.setUnavailable("No synchronized lyrics found");
                     return;
@@ -361,7 +423,7 @@ final class VisionMediaBridge {
             } catch (Throwable error) {
                 if (requestKey.equals(lastTrackKey)) FloatingLyrics.setUnavailable("Could not load lyrics");
             }
-        }, "VisionBrowser-LRCLIB");
+        }, "VisionBrowser-Lyrics");
         worker.setDaemon(true);
         worker.start();
     }

@@ -79,6 +79,17 @@ final class ViewMath {
         return toWorld(f, cx, cy, d);
     }
 
+    /** true when a box (centre x,y, half size hw,hh in NDC) touches a zone that is hard to read: the top corners or the bottom of the screen */
+    static boolean blocked(double x, double y, double hw, double hh) {
+        if (y - hh < -VisionSettings.lyricsBottomLimit) return true;
+        if (VisionSettings.lyricsCornerAvoid) {
+            double cw = VisionSettings.lyricsCornerSize, chh = Math.min(0.9, cw * 1.3);
+            boolean top = y + hh > 1.0 - chh;
+            if (top && (x - hw < -1.0 + cw || x + hw > 1.0 - cw)) return true;
+        }
+        return false;
+    }
+
     /**
      * Picks a screen centre for a box of half size (hwN, hhN) in NDC: inside the margins, not overlapping the crosshair zone and not
      * overlapping the boxes in {@code avoid} ({cx, cy, hw, hh}). anchor 0 = random, 1..6 = fixed spots.
@@ -90,14 +101,14 @@ final class ViewMath {
             double sx = anchor == 3 || anchor == 5 ? -1 : anchor == 4 || anchor == 6 ? 1 : 0;
             double sy = anchor == 2 || anchor == 5 || anchor == 6 ? -1 : 1;
             double x = sx * Math.min(limX, 0.62), y = sy * Math.max(minY, Math.min(limY, 0.58));
-            return new double[]{x, y};
+            if (!blocked(x, y, hwN, hhN)) return new double[]{x, y};
         }
         ThreadLocalRandom r = ThreadLocalRandom.current();
         double bestX = 0, bestY = minY, bestScore = -1;
         for (int t = 0; t < 60; t++) {
             double x = limX <= 0 ? 0 : r.nextDouble(-limX, limX), y = limY <= 0 ? 0 : r.nextDouble(-limY, limY);
             boolean onCrosshair = Math.abs(x) - hwN < exclude && Math.abs(y) - hhN < exclude;
-            if (onCrosshair) continue;
+            if (onCrosshair || blocked(x, y, hwN, hhN)) continue;
             double score = 1e9;
             for (double[] a : avoid) {
                 double gapX = Math.abs(x - a[0]) - (hwN + a[2]), gapY = Math.abs(y - a[1]) - (hhN + a[3]);
@@ -107,6 +118,8 @@ final class ViewMath {
             if (score > bestScore) { bestScore = score; bestX = x; bestY = y; }
         }
         if (bestScore >= 0 || !avoid.isEmpty()) return new double[]{bestX, bestY};
-        return new double[]{0, (r.nextBoolean() ? 1 : -1) * minY};
+        double fy = Math.max(minY, Math.min(limY, 0.35));
+        if (blocked(0, fy, hwN, hhN)) fy = Math.max(-VisionSettings.lyricsBottomLimit + hhN, -limY);
+        return new double[]{0, fy};
     }
 }

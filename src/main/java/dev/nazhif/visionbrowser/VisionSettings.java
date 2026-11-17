@@ -62,6 +62,9 @@ final class VisionSettings {
     static volatile float lyricsViewSmoothing = 0.35f;
     static volatile boolean lyricsFaceAlways = true;
     static volatile boolean lyricsFitScreen = true;
+    static volatile boolean lyricsCornerAvoid = true;   // keep random lyrics out of the top-left / top-right corners
+    static volatile float lyricsCornerSize = 0.42f;
+    static volatile float lyricsBottomLimit = 0.55f;    // lowest allowed edge of a lyric, as a fraction below screen centre (1 = very bottom)
 
     // ---- lyrics: animation
     static volatile int lyricsAnimIn = 2;
@@ -140,6 +143,9 @@ final class VisionSettings {
         lyricsViewSmoothing = f(o, "lyricsViewSmoothing", lyricsViewSmoothing, 0f, 1f);
         lyricsFaceAlways = b(o, "lyricsFaceAlways", lyricsFaceAlways);
         lyricsFitScreen = b(o, "lyricsFitScreen", lyricsFitScreen);
+        lyricsCornerAvoid = b(o, "lyricsCornerAvoid", lyricsCornerAvoid);
+        lyricsCornerSize = f(o, "lyricsCornerSize", lyricsCornerSize, 0.1f, 0.8f);
+        lyricsBottomLimit = f(o, "lyricsBottomLimit", lyricsBottomLimit, 0.15f, 1f);
 
         lyricsAnimIn = i(o, "lyricsAnimIn", lyricsAnimIn, 0, LyricAnim.IN.length - 1);
         lyricsAnimOut = i(o, "lyricsAnimOut", lyricsAnimOut, 0, LyricAnim.OUT.length - 1);
@@ -201,6 +207,9 @@ final class VisionSettings {
         o.addProperty("lyricsViewSmoothing", lyricsViewSmoothing);
         o.addProperty("lyricsFaceAlways", lyricsFaceAlways);
         o.addProperty("lyricsFitScreen", lyricsFitScreen);
+        o.addProperty("lyricsCornerAvoid", lyricsCornerAvoid);
+        o.addProperty("lyricsCornerSize", lyricsCornerSize);
+        o.addProperty("lyricsBottomLimit", lyricsBottomLimit);
         o.addProperty("lyricsAnimIn", lyricsAnimIn);
         o.addProperty("lyricsAnimOut", lyricsAnimOut);
         o.addProperty("lyricsAnimSpeed", lyricsAnimSpeed);

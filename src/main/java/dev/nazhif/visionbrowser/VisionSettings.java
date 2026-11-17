@@ -11,6 +11,9 @@ import java.nio.file.Path;
 final class VisionSettings {
     static final int MODE_TEXT = 0, MODE_GLOW = 1, MODE_HUD = 2;
 
+    // ---- app mode: false = browser mode, true = music mode (hidden YouTube Music player + search screen)
+    static volatile boolean musicMode = false;
+
     // ---- floating window
     static volatile float floatWidth = 1.8f;
     static volatile float floatDistance = 3.0f;
@@ -66,6 +69,10 @@ final class VisionSettings {
     static volatile float lyricsCornerSize = 0.42f;
     static volatile float lyricsBottomLimit = 0.55f;    // lowest allowed edge of a lyric, as a fraction below screen centre (1 = very bottom)
 
+    // ---- lyrics: timing
+    static volatile float lyricsGlobalOffsetMs = 0f;    // + = lyrics earlier, - = later (applies to every song)
+    static volatile boolean lyricsLatencyComp = true;   // compensate the delay between the player and the mod
+
     // ---- lyrics: animation
     static volatile int lyricsAnimIn = 2;
     static volatile int lyricsAnimOut = 1;
@@ -97,6 +104,7 @@ final class VisionSettings {
     private static boolean b(JsonObject o, String k, boolean cur) { return o.has(k) ? o.get(k).getAsBoolean() : cur; }
 
     private static void apply(JsonObject o) {
+        musicMode = b(o, "musicMode", musicMode);
         floatWidth = f(o, "floatWidth", floatWidth, 0.6f, 7f);
         floatDistance = f(o, "floatDistance", floatDistance, 1.2f, 10f);
         floatHeight = f(o, "floatHeight", floatHeight, -2f, 2f);
@@ -147,6 +155,8 @@ final class VisionSettings {
         lyricsCornerSize = f(o, "lyricsCornerSize", lyricsCornerSize, 0.1f, 0.8f);
         lyricsBottomLimit = f(o, "lyricsBottomLimit", lyricsBottomLimit, 0.15f, 1f);
 
+        lyricsGlobalOffsetMs = f(o, "lyricsGlobalOffsetMs", lyricsGlobalOffsetMs, -1500f, 1500f);
+        lyricsLatencyComp = b(o, "lyricsLatencyComp", lyricsLatencyComp);
         lyricsAnimIn = i(o, "lyricsAnimIn", lyricsAnimIn, 0, LyricAnim.IN.length - 1);
         lyricsAnimOut = i(o, "lyricsAnimOut", lyricsAnimOut, 0, LyricAnim.OUT.length - 1);
         lyricsAnimSpeed = f(o, "lyricsAnimSpeed", lyricsAnimSpeed, 0.3f, 3f);
@@ -165,6 +175,7 @@ final class VisionSettings {
 
     private static JsonObject toJson() {
         JsonObject o = new JsonObject();
+        o.addProperty("musicMode", musicMode);
         o.addProperty("floatWidth", floatWidth);
         o.addProperty("floatDistance", floatDistance);
         o.addProperty("floatHeight", floatHeight);
@@ -210,6 +221,8 @@ final class VisionSettings {
         o.addProperty("lyricsCornerAvoid", lyricsCornerAvoid);
         o.addProperty("lyricsCornerSize", lyricsCornerSize);
         o.addProperty("lyricsBottomLimit", lyricsBottomLimit);
+        o.addProperty("lyricsGlobalOffsetMs", lyricsGlobalOffsetMs);
+        o.addProperty("lyricsLatencyComp", lyricsLatencyComp);
         o.addProperty("lyricsAnimIn", lyricsAnimIn);
         o.addProperty("lyricsAnimOut", lyricsAnimOut);
         o.addProperty("lyricsAnimSpeed", lyricsAnimSpeed);

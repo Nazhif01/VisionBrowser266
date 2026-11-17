@@ -22,15 +22,16 @@ import java.util.function.Supplier;
 final class ChatPanel {
     private interface FGet { float get(); }
     private interface FSet { void set(float v); }
-    private sealed interface Entry permits Header, Toggle, Slider, Cycle { }
+    private sealed interface Entry permits Header, Toggle, Slider, Cycle, Action { }
     private record Header(String label) implements Entry { }
     private record Toggle(String label, BooleanSupplier get, Runnable flip) implements Entry { }
     private record Slider(String label, float min, float max, FGet get, FSet set, Function<Float, String> fmt, Runnable commit) implements Entry { }
     private record Cycle(String label, Supplier<String> value, IntConsumer step) implements Entry { }
+    private record Action(String label, Runnable run) implements Entry { }
     private record Page(String name, List<Entry> entries) { }
     private record Tab(String name, List<Page> pages) { }
 
-    private enum Role { TAB, PAGE, HEADER, TOGGLE, SLIDER, PREV, NEXT, UP, DOWN, RESET }
+    private enum Role { TAB, PAGE, HEADER, ACTION, TOGGLE, SLIDER, PREV, NEXT, UP, DOWN, RESET }
     private record Item(Role role, int index, Entry entry, int x, int y, int w, int h) {
         boolean has(double mx, double my) { return mx >= x && mx < x + w && my >= y && my < y + h; }
     }
@@ -87,13 +88,15 @@ final class ChatPanel {
     private static String secs(float v) { return String.format(Locale.ROOT, "%.1f s", v); }
     private static String px(float v) { return Math.round(v) + " px"; }
     private static String whole(float v) { return String.valueOf(Math.round(v)); }
+    private static String ms(float v) { return String.format(Locale.ROOT, "%+d ms", Math.round(v)); }
     private static String times(float v) { return String.format(Locale.ROOT, "x%.2f", v); }
     private static String ndc(float v) { return Math.round(v * 50) + "% of half screen"; }
 
     private static List<Tab> buildTabs() {
         List<Page> window = List.of(
                 new Page("Main", List.of(
-                        new Header("Floating browser window"),
+                        new Header("Mode and floating window"),
+                        tg("Music mode (no browser)", () -> VisionSettings.musicMode, v -> VisionSettings.musicMode = v, null),
                         new Toggle("Floating window", FloatWindow::isEnabled, FloatWindow::toggle),
                         new Toggle("Follow player", FloatWindow::isLocked, FloatWindow::toggleLock),
                         new Toggle("Billboard", () -> VisionSettings.floatBillboard, FloatWindow::toggleBillboard),
@@ -131,6 +134,15 @@ final class ChatPanel {
                         sl("Word reveal speed", 0.08f, 0.8f, () -> VisionSettings.lyricsWordSpeed, v -> VisionSettings.lyricsWordSpeed = v, v -> String.format(Locale.ROOT, "%.2f s/word", v), LYR),
                         sl("Max lines on screen", 1f, 8f, () -> VisionSettings.lyricsMaxLines, v -> VisionSettings.lyricsMaxLines = Math.round(v), ChatPanel::whole, LYR),
                         sl("Glow line lifetime", 2f, 20f, () -> VisionSettings.lyricsLifeSeconds, v -> VisionSettings.lyricsLifeSeconds = v, ChatPanel::secs, LYR))),
+                new Page("Sync", List.of(
+                        new Header("Lyric timing (saved per song)"),
+                        new Action("Line starts NOW (tap sync)", FloatingLyrics::tapSync),
+                        sl("This song offset", -3000f, 3000f, () -> LyricSync.offsetMs(FloatingLyrics.trackKey()),
+                                v -> LyricSync.setOffset(FloatingLyrics.trackKey(), Math.round(v / 10f) * 10), ChatPanel::ms, LyricSync::save),
+                        new Cycle("Lyric version", FloatingLyrics::candidateLabel, FloatingLyrics::cycleCandidate),
+                        sl("All songs offset", -1500f, 1500f, () -> VisionSettings.lyricsGlobalOffsetMs, v -> VisionSettings.lyricsGlobalOffsetMs = Math.round(v / 10f) * 10, ChatPanel::ms, null),
+                        tg("Latency comp.", () -> VisionSettings.lyricsLatencyComp, v -> VisionSettings.lyricsLatencyComp = v, null),
+                        new Action("Reset this song", FloatingLyrics::resetSongSync))),
                 new Page("View", List.of(
                         new Header("Player view (follows where you look)"),
                         tg("Player view", () -> VisionSettings.lyricsViewMode, v -> VisionSettings.lyricsViewMode = v, LYR),
@@ -243,6 +255,11 @@ final class ChatPanel {
                 a.add(new Item(Role.HEADER, i, e, x, y, inner, 12));
                 y += 15;
                 i++;
+            } else if (e instanceof Action) {
+                if (y + 18 > limit) break;
+                a.add(new Item(Role.ACTION, i, e, x, y, inner, 18));
+                y += 23;
+                i++;
             } else if (e instanceof Toggle) {
                 if (y + 18 > limit) break;
                 if (i + 1 < es.size() && es.get(i + 1) instanceof Toggle) {
@@ -288,6 +305,7 @@ final class ChatPanel {
                 case TAB -> { tab = r.index(); scroll = 0; }
                 case PAGE -> { pageOf[tab] = r.index(); scroll = 0; }
                 case TOGGLE -> ((Toggle) r.entry()).flip().run();
+                case ACTION -> ((Action) r.entry()).run().run();
                 case PREV -> ((Cycle) r.entry()).step().accept(-1);
                 case NEXT -> ((Cycle) r.entry()).step().accept(1);
                 case UP -> scroll = Math.max(0, scroll - 1);
@@ -341,6 +359,7 @@ final class ChatPanel {
                     boolean on = t.get().getAsBoolean();
                     button(g, font, r, DynamicIsland.ellipsize(font, t.label() + (on ? ": On" : ": Off"), r.w() - 6), hot, on, accent);
                 }
+                case ACTION -> button(g, font, r, ((Action) r.entry()).label(), hot, false, accent);
                 case SLIDER -> {
                     Slider s = (Slider) r.entry();
                     float v = s.get().get();

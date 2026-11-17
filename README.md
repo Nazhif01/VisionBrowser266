@@ -1,6 +1,6 @@
 # Vision Browser 26.3
 
-A client-side Fabric mod for Minecraft Java 26.3. Vision Browser embeds Chromium through Rinku and adds a floating synchronized-lyrics HUD.
+A client-side Fabric mod for Minecraft Java 26.3. Vision Browser controls a real Chromium-family browser (Brave, Chrome, Edge, Vivaldi, Opera) from inside Minecraft through the DevTools protocol, and adds a floating synchronized-lyrics HUD.
 
 ## Features
 
@@ -23,4 +23,4 @@ GitHub Actions builds the project on pushes to `main`. Download the `VisionBrows
 
 ## Credits and licensing
 
-This project is an independent implementation. Rinku is a separate LGPL-2.1-or-later dependency and is not bundled into this mod. Synchronized lyrics are retrieved from LRCLIB.
+This project is an independent implementation. Synchronized lyrics are retrieved from LRCLIB.

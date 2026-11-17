@@ -41,6 +41,7 @@ final class DynamicIsland {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
         if (mc.gui.screen() instanceof IslandScreen) return; // the screen draws it itself
+        if (!VisionSettings.islandShow) return;
         if (!VisionMediaBridge.hasMedia() && target == 0f && expand < 0.01f) return;
         draw(g, mc, -1, -1);
     }
@@ -63,8 +64,8 @@ final class DynamicIsland {
     private static int islandX(int sw, int w) { return (sw - w) / 2; }
 
     /** mouse x/y in screen space -> island space (the island is scaled about its top-centre) */
-    private static double unscaleX(int sw, double mx) { return (mx - sw / 2.0) / VisionSettings.islandScale + sw / 2.0; }
-    private static double unscaleY(double my) { return (my - TOP) / VisionSettings.islandScale + TOP; }
+    private static double unscaleX(int sw, double mx) { return (mx - VisionSettings.islandOffsetX - sw / 2.0) / VisionSettings.islandScale + sw / 2.0; }
+    private static double unscaleY(double my) { return (my - VisionSettings.islandOffsetY - TOP) / VisionSettings.islandScale + TOP; }
 
     static Hit hitTest(int sw, double screenX, double screenY) {
         double mx = unscaleX(sw, screenX), my = unscaleY(screenY);
@@ -109,7 +110,7 @@ final class DynamicIsland {
         Matrix3x2fStack pose = g.pose();
         pose.pushMatrix();
         try {
-            pose.translate(swidth / 2f, (float) TOP);
+            pose.translate(swidth / 2f + VisionSettings.islandOffsetX, (float) TOP + VisionSettings.islandOffsetY);
             pose.scale(scale, scale);
             pose.translate(-swidth / 2f, (float) -TOP);
             drawScaled(g, mc, (int) Math.round(unscaleX(swidth, screenMouseX)), (int) Math.round(unscaleY(screenMouseY)));

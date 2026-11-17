@@ -139,6 +139,9 @@ final class ChatPanel {
                         cyc("Spot", ANCHORS, () -> VisionSettings.lyricsViewAnchor, v -> VisionSettings.lyricsViewAnchor = v, LYR),
                         sl("Depth in front of you", 3f, 30f, () -> VisionSettings.lyricsViewDepth, v -> VisionSettings.lyricsViewDepth = v, ChatPanel::blocks, LYR),
                         sl("Crosshair clear zone", 0.05f, 0.7f, () -> VisionSettings.lyricsCrosshairExclude, v -> VisionSettings.lyricsCrosshairExclude = v, ChatPanel::pct, LYR),
+                        tg("Avoid top corners", () -> VisionSettings.lyricsCornerAvoid, v -> VisionSettings.lyricsCornerAvoid = v, LYR),
+                        sl("Corner zone size", 0.1f, 0.8f, () -> VisionSettings.lyricsCornerSize, v -> VisionSettings.lyricsCornerSize = v, ChatPanel::pct, LYR),
+                        sl("Lowest allowed edge", 0.15f, 1f, () -> VisionSettings.lyricsBottomLimit, v -> VisionSettings.lyricsBottomLimit = v, v -> pct(v) + " below center", LYR),
                         sl("Screen edge margin", 0.01f, 0.3f, () -> VisionSettings.lyricsScreenMargin, v -> VisionSettings.lyricsScreenMargin = v, ChatPanel::pct, LYR),
                         sl("Follow smoothing", 0f, 1f, () -> VisionSettings.lyricsViewSmoothing, v -> VisionSettings.lyricsViewSmoothing = v, ChatPanel::pct, null))),
                 new Page("Anim", List.of(

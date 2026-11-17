@@ -1,386 +1,319 @@
 package dev.nazhif.visionbrowser;
 
-import com.mojang.blaze3d.platform.InputConstants;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import de.keksuccino.rinku.Rinku;
 import de.keksuccino.rinku.RinkuBrowser;
-import de.keksuccino.rinku.RinkuRenderCoordinator;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.input.CharacterEvent;
-import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import org.cef.browser.CefBrowser;
+import org.cef.handler.CefDisplayHandlerAdapter;
 
+import java.net.URI;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Locale;
 
-public final class VisionBrowserScreen extends Screen {
-    /** Minecraft 26.3 uses SDL button numbering: left = 1 (Rinku's toCefMouseButton maps 1,2,3 to CEF 0,1,2). */
-    private static final int MOUSE_LEFT = 1;
-    private static final String HOME_URL = "https://www.google.com";
-    private static final int HEADER = 58;
-    private final Screen parentScreen;
-    private RinkuBrowser browser;
-    private EditBox addressBar;
-    private static int windowX, windowY, windowW, windowH;
-    private boolean draggingWindow;
-    private boolean resizingWindow;
-    private double dragOffsetX, dragOffsetY;
-    private int pressedButton = -1;
-    private static boolean rebuilding;
+/**
+ * Reads playback state from the browser page and sends control commands back.
+ *
+ * Read path : injected JS -> document.title -> CefDisplayHandler.onTitleChange (registered on Rinku.getClient()).
+ *             Rinku 3.0.5 has NO getTitle() method, so a handler is the only title channel.
+ * Write path: RinkuBrowser.executeJavaScript(code, url, line) (inherited from CefBrowser).
+ * All Rinku calls are made on the Minecraft client thread (tick / UI events), the same thread the rest of the mod uses.
+ */
+final class VisionMediaBridge {
+    private static final String PREFIX = "__VISION_MEDIA__";
+    private static final int SCRIPT_VERSION = 3;
 
-    public VisionBrowserScreen(Screen parentScreen) {
-        super(Component.literal("Vision Browser"));
-        this.parentScreen = parentScreen;
+    private static volatile boolean handlerRegistered;
+    private static volatile CefBrowser mediaBrowser;
+    private static volatile int mediaBrowserId = -1;
+    private static volatile String trackTitle = "";
+    private static volatile String artist = "";
+    private static volatile String album = "";
+    private static volatile String artUrl = "";
+    private static volatile boolean playing;
+    private static volatile double positionSeconds;
+    private static volatile double durationSeconds;
+    private static volatile float volume = 1f;
+    private static volatile boolean muted;
+    private static volatile long positionUpdatedAt;
+    private static volatile long lastPayloadAt;
+    private static volatile long playLockUntil;
+    private static volatile long volumeLockUntil;
+    private static volatile String lastTrackKey = "";
+    private static volatile String status = "Open a music page in Vision Browser";
+    private static int tickCounter;
+
+    private static final HttpClient HTTP = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(8)).build();
+
+    private static final String CAPTURE_SCRIPT = ("(function(){try{"
+            + "if(window.__vmV===@V@)return;window.__vmV=@V@;"
+            + "var P='@PREFIX@',last='';"
+            + "function el(){var c=[document.querySelector('video'),document.querySelector('audio')];"
+            + "for(var i=0;i<c.length;i++){if(c[i]&&c[i].readyState>0)return c[i];}return c[0]||c[1];}"
+            + "function art(m){try{var a=m&&m.artwork;if(a&&a.length){return a[a.length-1].src||'';}}catch(e){}return '';}"
+            + "function scan(){try{var v=el();if(!v)return;"
+            + "var m=navigator.mediaSession&&navigator.mediaSession.metadata;"
+            + "var t=(m&&m.title)||'',a=(m&&m.artist)||'',al=(m&&m.album)||'';"
+            + "if(!t){var x=document.querySelector('ytmusic-player-bar .title');if(x)t=(x.textContent||'').trim();}"
+            + "if(!a){var y=document.querySelector('ytmusic-player-bar .byline');if(y)a=(y.textContent||'').trim();}"
+            + "if(!t)return;"
+            + "var o={t:t,a:a,al:al,art:art(m),on:!v.paused&&!v.ended,pos:v.currentTime||0,"
+            + "dur:isFinite(v.duration)?v.duration:0,vol:v.volume,mut:!!v.muted};"
+            + "var n=P+encodeURIComponent(JSON.stringify(o));"
+            + "if(n!==last){last=n;document.title=n;}"
+            + "}catch(e){}}"
+            + "scan();setInterval(scan,500);"
+            + "['play','pause','loadedmetadata','seeked','volumechange'].forEach(function(ev){document.addEventListener(ev,scan,true);});"
+            + "}catch(e){}})();")
+            .replace("@V@", Integer.toString(SCRIPT_VERSION)).replace("@PREFIX@", PREFIX);
+
+    private static final String JS_PREFIX = "var v=document.querySelector('video,audio');";
+    private static final String JS_MEDIA_HELPERS =
+            "function deep(sel){var q=[document];while(q.length){var r=q.shift();try{var e=r.querySelector(sel);if(e)return e;"
+            + "var all=r.querySelectorAll('*');for(var i=0;i<all.length;i++)if(all[i].shadowRoot)q.push(all[i].shadowRoot);}catch(e){}}return null;}"
+            + "function media(){return document.querySelector('video,audio');}"
+            + "function clickAny(ids){for(var i=0;i<ids.length;i++){var b=deep(ids[i]);if(b){b.click();return true;}}return false;}";
+    private static final String JS_TOGGLE = "(function(){"+JS_MEDIA_HELPERS
+            + "var v=media();if(v){if(v.paused){var p=v.play();if(p&&p.catch)p.catch(function(){});}else{v.pause();}return;}"
+            + "clickAny(['ytmusic-player-bar #play-pause-button','#play-pause-button','button[aria-label*=Pause]','button[aria-label*=Play]']);})();";
+    private static final String JS_MUTE = "(function(){"+JS_MEDIA_HELPERS+"var v=media();if(v)v.muted=!v.muted;})();";
+    private static final String JS_NEXT = "(function(){"+JS_MEDIA_HELPERS
+            + "if(clickAny(['ytmusic-player-bar #next-button','#next-button','.next-button','.ytp-next-button','button[aria-label*=Next]']))return;"
+            + "var v=media();if(v&&v.duration>0)v.currentTime=Math.min(v.duration,v.currentTime+10);})();";
+    private static final String JS_PREV = "(function(){"+JS_MEDIA_HELPERS
+            + "if(clickAny(['ytmusic-player-bar #previous-button','#previous-button','.previous-button','.ytp-prev-button','button[aria-label*=Previous]']))return;"
+            + "var v=media();if(v)v.currentTime=0;})();";
+
+    private VisionMediaBridge() { }
+
+    static void start() {
+        ClientTickEvents.END_CLIENT_TICK.register(client -> tick());
     }
 
-    @Override
-    protected void init() {
-        super.init();
-        rebuilding = false;
-        FloatWindow.onScreenOpened();
-        minecraft.mouseHandler.releaseMouse();
-        if (windowW <= 0 || windowH <= 0) {
-            windowW = Math.min(900, Math.max(520, width - 100));
-            windowH = Math.min(600, Math.max(360, height - 100));
-            windowX = (width - windowW) / 2;
-            windowY = (height - windowH) / 2;
-        }
-        clampWindow();
+    // ------------------------------------------------------------------ read path
+
+    private static void ensureHandler() {
+        if (handlerRegistered) return;
         try {
-            browser = VisionBrowserClient.getOrCreateBrowser(HOME_URL);
-            resizeBrowser();
-        } catch (Throwable ignored) {
-            browser = null;
-        }
-
-        int tabX = windowX + 12;
-        for (int i = 0; i < VisionBrowserClient.getTabCount(); i++) {
-            final int tabIndex = i;
-            boolean active = i == VisionBrowserClient.getActiveTab();
-            addRenderableWidget(Button.builder(
-                    Component.literal((active ? "• " : "") + (i + 1)),
-                    button -> switchTab(tabIndex)
-            ).bounds(tabX, windowY + 34, 38, 20).build());
-            addRenderableWidget(Button.builder(Component.literal("×"), button -> closeTab(tabIndex))
-                    .bounds(tabX + 39, windowY + 34, 20, 20).build());
-            tabX += 63;
-        }
-        addRenderableWidget(Button.builder(Component.literal("+"), button -> addTab())
-                .bounds(tabX, windowY + 34, 24, 20).build());
-
-        addRenderableWidget(Button.builder(Component.literal("‹"), button -> navigateBack())
-                .bounds(windowX + 12, windowY + 7, 24, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("›"), button -> navigateForward())
-                .bounds(windowX + 40, windowY + 7, 24, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Float"), button -> floatWindow())
-                .bounds(windowX + windowW - 188, windowY + 7, 56, 20).build());
-        addRenderableWidget(Button.builder(Component.literal(FloatWindow.isLocked() ? "Locked" : "Free"), button -> toggleFloatLock())
-                .bounds(windowX + windowW - 128, windowY + 7, 66, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("□"), button -> toggleSize())
-                .bounds(windowX + windowW - 58, windowY + 7, 22, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("×"), button -> onClose())
-                .bounds(windowX + windowW - 30, windowY + 7, 22, 20).build());
-
-        addressBar = addRenderableWidget(new EditBox(font, windowX + 70, windowY + 7,
-                Math.max(100, windowW - 266), 18, Component.literal("Search or enter URL")));
-        addressBar.setMaxLength(2048);
-        addressBar.setValue(HOME_URL);
-        addressBar.setHint(Component.literal("Search Google or enter URL"));
-    }
-
-    private void clampWindow() {
-        windowW = Math.max(420, Math.min(windowW, width - 24));
-        windowH = Math.max(280, Math.min(windowH, height - 24));
-        windowX = Math.max(12, Math.min(windowX, width - windowW - 12));
-        windowY = Math.max(12, Math.min(windowY, height - windowH - 12));
-    }
-
-    private void resizeBrowser() {
-        if (browser != null) {
-            int scale = Math.max(1, (int) minecraft.getWindow().getGuiScale());
-            browser.resize(Math.max(1, windowW * scale), Math.max(1, (windowH - HEADER) * scale));
-        }
-    }
-
-    private void rebuild() {
-        rebuilding = true;
-        minecraft.gui.setScreen(new VisionBrowserScreen(parentScreen));
-    }
-
-    private void switchTab(int index) {
-        VisionBrowserClient.selectTab(index);
-        rebuild();
-    }
-
-    private void addTab() {
-        VisionBrowserClient.createTab(HOME_URL);
-        rebuild();
-    }
-
-    private void closeTab(int index) {
-        VisionBrowserClient.closeTab(index, HOME_URL);
-        rebuild();
-    }
-
-    /** Turn the page into a floating 3D window and return to the game. */
-    private void floatWindow() {
-        FloatWindow.setEnabled(true);
-        onClose();
-    }
-
-    private void toggleFloatLock() {
-        FloatWindow.toggleLock();
-        rebuild();
-    }
-
-    private void navigateBack() {
-        if (browser != null) browser.goBack();
-    }
-
-    private void navigateForward() {
-        if (browser != null) browser.goForward();
-    }
-
-    private void toggleSize() {
-        if (windowW < width - 40 || windowH < height - 40) {
-            windowW = width - 24;
-            windowH = height - 24;
-            windowX = 12;
-            windowY = 12;
-        } else {
-            windowW = Math.min(900, width - 100);
-            windowH = Math.min(600, height - 100);
-            windowX = (width - windowW) / 2;
-            windowY = (height - windowH) / 2;
-        }
-        rebuild();
-    }
-
-    private static void roundedRect(GuiGraphicsExtractor graphics, int x, int y, int w, int h, int radius, int color) {
-        int r = Math.max(0, Math.min(radius, Math.min(w, h) / 2));
-        for (int row = 0; row < h; row++) {
-            int inset = 0;
-            if (row < r) {
-                double dy = r - row - 0.5;
-                inset = r - (int) Math.floor(Math.sqrt(Math.max(0, r * r - dy * dy)));
-            } else if (row >= h - r) {
-                double dy = row - (h - r) + 0.5;
-                inset = r - (int) Math.floor(Math.sqrt(Math.max(0, r * r - dy * dy)));
-            }
-            graphics.fill(x + inset, y + row, x + w - inset, y + row + 1, color);
-        }
-    }
-
-    private void navigateFromAddressBar() {
-        if (browser == null || addressBar == null) return;
-        String input = addressBar.getValue().trim();
-        if (input.isEmpty()) return;
-        String target;
-        if (input.contains("://") || input.startsWith("about:")) target = input;
-        else if (input.contains(".") && !input.contains(" ")) target = "https://" + input;
-        else target = "https://www.google.com/search?q=" + URLEncoder.encode(input, StandardCharsets.UTF_8);
-        browser.loadURL(target);
-        browser.setFocus(true);
-        setFocused(null);
-    }
-
-    /** Frameless look: a translucent toolbar capsule floating above a rounded page. No shell, border, glow or corner masks. */
-    @Override
-    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        int pageY = windowY + HEADER, pageH = windowH - HEADER, radius = 16;
-        roundedRect(graphics, windowX, windowY, windowW, HEADER - 3, 14, 0xA80C0C14);          // toolbar capsule
-        roundedRect(graphics, windowX + 2, windowY + 2, windowW - 4, 22, 12, 0x12FFFFFF);        // soft sheen
-        if (browser != null) {
-            try {
-                RinkuRenderCoordinator.pumpOnRenderThread();
-                if (browser.isTextureReady()) {
-                    Identifier texture = browser.getTextureIdentifier();
-                    if (texture != null) drawRoundedPage(graphics, texture, windowX, pageY, windowW, pageH, radius);
+            if (!Rinku.isInitialized()) return;
+            Rinku.getClient().addDisplayHandler(new CefDisplayHandlerAdapter() {
+                @Override
+                public void onTitleChange(CefBrowser browser, String title) {
+                    onTitle(browser, title);
                 }
-            } catch (Throwable ignored) { }
+            });
+            handlerRegistered = true;
+            status = "Waiting for music playback";
+        } catch (Throwable error) {
+            status = "Media handler failed: " + error.getClass().getSimpleName();
         }
-        // faint resize handle in the bottom-right corner
-        graphics.fill(windowX + windowW - 14, windowY + windowH - 6, windowX + windowW - 6, windowY + windowH - 5, 0x66FFFFFF);
-        graphics.fill(windowX + windowW - 10, windowY + windowH - 10, windowX + windowW - 6, windowY + windowH - 9, 0x66FFFFFF);
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 
-    private static final int VIRT = 8192; // virtual texture size: UVs are normalised, the real browser texture size does not matter
-
-    /** The page texture with rounded corners: corner rows are narrower strips, the middle is a single blit. */
-    private static void drawRoundedPage(GuiGraphicsExtractor g, Identifier tex, int x, int y, int w, int h, int r) {
-        r = Math.max(0, Math.min(r, Math.min(w, h) / 2));
-        for (int row = 0; row < r; row++) {
-            int inset = cornerInset(r, row);
-            part(g, tex, x + inset, y + row, w - 2 * inset, 1, inset, row, w, h);
-            part(g, tex, x + inset, y + h - 1 - row, w - 2 * inset, 1, inset, h - 1 - row, w, h);
+    private static void tick() {
+        ensureHandler();
+        if (++tickCounter % 20 != 0) return;
+        if (handlerRegistered) {
+            for (RinkuBrowser browser : VisionBrowserClient.getTabs()) {
+                try {
+                    browser.executeJavaScript(CAPTURE_SCRIPT, "visionbrowser://media-capture", 0);
+                } catch (Throwable error) {
+                    status = "Cannot inject media script: " + error.getClass().getSimpleName();
+                }
+            }
         }
-        if (h - 2 * r > 0) part(g, tex, x, y + r, w, h - 2 * r, 0, r, w, h);
-    }
-
-    private static int cornerInset(int r, int row) {
-        double dy = r - row - 0.5;
-        return r - (int) Math.floor(Math.sqrt(Math.max(0, r * (double) r - dy * dy)));
-    }
-
-    /** draws the page-space rectangle (sx, sy, dw x dh) of a page that is totalW x totalH */
-    private static void part(GuiGraphicsExtractor g, Identifier tex, int dx, int dy, int dw, int dh, int sx, int sy, int totalW, int totalH) {
-        if (dw <= 0 || dh <= 0) return;
-        float u = sx / (float) totalW * VIRT, v = sy / (float) totalH * VIRT;
-        int uW = Math.max(1, Math.round(dw / (float) totalW * VIRT)), vH = Math.max(1, Math.round(dh / (float) totalH * VIRT));
-        g.blit(RenderPipelines.GUI_TEXTURED, tex, dx, dy, u, v, dw, dh, uW, vH, VIRT, VIRT, 0xFFFFFFFF);
-    }
-
-    private boolean insidePage(double x, double y) {
-        return x >= windowX && x < windowX + windowW && y >= windowY + HEADER && y < windowY + windowH;
-    }
-
-    private int browserMouseX(double x) {
-        return (int) ((x - windowX) * minecraft.getWindow().getGuiScale());
-    }
-
-    private int browserMouseY(double y) {
-        return (int) ((y - windowY - HEADER) * minecraft.getWindow().getGuiScale());
-    }
-
-    @Override
-    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (super.mouseClicked(event, doubleClick)) return true;
-        double x = event.x(), y = event.y();
-        if (event.button() == MOUSE_LEFT && x >= windowX + windowW - 18 && y >= windowY + windowH - 18) {
-            resizingWindow = true;
-            return true;
+        if (!lastTrackKey.isEmpty() && System.currentTimeMillis() - lastPayloadAt > 5000) {
+            clearTrack("Playback stopped");
         }
-        if (event.button() == MOUSE_LEFT && x >= windowX && x <= windowX + windowW && y >= windowY && y < windowY + HEADER) {
-            draggingWindow = true;
-            dragOffsetX = x - windowX;
-            dragOffsetY = y - windowY;
-            return true;
-        }
-        if (browser != null && insidePage(x, y)) {
-            pressedButton = event.button();
-            browser.sendMousePress(browserMouseX(x), browserMouseY(y), event.button());
-            browser.setFocus(true);
-            return true;
-        }
-        return false;
     }
 
-    @Override
-    public boolean mouseReleased(MouseButtonEvent event) {
-        if (draggingWindow || resizingWindow) {
-            draggingWindow = false;
-            resizingWindow = false;
-            rebuild();
-            return true;
+    private static void onTitle(CefBrowser browser, String title) {
+        if (title == null || !title.startsWith(PREFIX)) return;
+        try {
+            String raw = URLDecoder.decode(title.substring(PREFIX.length()), StandardCharsets.UTF_8);
+            JsonObject o = JsonParser.parseString(raw).getAsJsonObject();
+            String t = str(o, "t");
+            if (t.isBlank()) return;
+            boolean on = o.has("on") && o.get("on").getAsBoolean();
+            int id = browser.getIdentifier();
+            if (!on && mediaBrowserId != -1 && mediaBrowserId != id) return; // another tab is the active source
+            long now = System.currentTimeMillis();
+            String a = str(o, "a");
+            double dur = num(o, "dur");
+            mediaBrowser = browser;
+            mediaBrowserId = id;
+            trackTitle = t;
+            artist = a;
+            album = str(o, "al");
+            if (now >= playLockUntil) playing = on;
+            positionSeconds = num(o, "pos");
+            durationSeconds = dur;
+            positionUpdatedAt = now;
+            lastPayloadAt = now;
+            if (now >= volumeLockUntil) {
+                volume = (float) Math.max(0, Math.min(1, num(o, "vol")));
+                muted = o.has("mut") && o.get("mut").getAsBoolean();
+            }
+            String key = (t + "|" + a).toLowerCase(Locale.ROOT);
+            if (!key.equals(lastTrackKey)) {
+                lastTrackKey = key;
+                status = "Finding synchronized lyrics";
+                FloatingLyrics.loadTrack(t, a, dur);
+            } else if (FloatingLyrics.hasLyrics()) {
+                status = "Lyrics synchronized";
+            }
+            String art = str(o, "art");
+            if (!art.equals(artUrl)) {
+                artUrl = art;
+                IslandArt.request(art);
+            }
+        } catch (Throwable ignored) {
+            status = "Cannot read current track";
         }
-        if (browser != null && pressedButton != -1) {
-            browser.sendMouseRelease(browserMouseX(event.x()), browserMouseY(event.y()), event.button());
-            pressedButton = -1;
-            browser.setFocus(true);
-            return true;
-        }
-        return super.mouseReleased(event);
     }
 
-    @Override
-    public void mouseMoved(double x, double y) {
-        if (browser != null && insidePage(x, y)) browser.sendMouseMove(browserMouseX(x), browserMouseY(y));
-        super.mouseMoved(x, y);
+    private static String str(JsonObject o, String key) {
+        return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsString() : "";
     }
 
-    @Override
-    public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
-        if (draggingWindow) {
-            windowX = (int) (event.x() - dragOffsetX);
-            windowY = (int) (event.y() - dragOffsetY);
-            clampWindow();
-            return true;
+    private static double num(JsonObject o, String key) {
+        try {
+            return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsDouble() : 0;
+        } catch (Throwable ignored) {
+            return 0;
         }
-        if (resizingWindow) {
-            windowW = (int) event.x() - windowX;
-            windowH = (int) event.y() - windowY;
-            clampWindow();
-            resizeBrowser();
-            return true;
-        }
-        if (browser != null && pressedButton != -1) {
-            browser.sendMouseMove(browserMouseX(event.x()), browserMouseY(event.y()));
-            return true;
-        }
-        return super.mouseDragged(event, dx, dy);
     }
 
-    @Override
-    public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
-        if (super.mouseScrolled(x, y, horizontal, vertical)) return true;
-        if (browser != null && insidePage(x, y)) {
-            browser.sendMouseWheel(browserMouseX(x), browserMouseY(y), vertical, 0);
-            return true;
-        }
-        return false;
+    private static void clearTrack(String message) {
+        mediaBrowser = null;
+        mediaBrowserId = -1;
+        trackTitle = "";
+        artist = "";
+        album = "";
+        artUrl = "";
+        playing = false;
+        positionSeconds = 0;
+        durationSeconds = 0;
+        lastTrackKey = "";
+        status = message;
+        IslandArt.request("");
+        FloatingLyrics.clear();
     }
 
-    @Override
-    public boolean keyPressed(KeyEvent event) {
-        if (addressBar != null
-                && (event.key() == InputConstants.KEY_RETURN || event.key() == InputConstants.KEY_NUMPADENTER)
-                && !addressBar.getValue().trim().isEmpty()) {
-            navigateFromAddressBar();
-            return true;
+    // ------------------------------------------------------------------ write path (commands)
+
+    private static void exec(String js) {
+        CefBrowser target = mediaBrowser;
+        if (target == null) target = VisionBrowserClient.getActiveBrowser();
+        if (target == null) return;
+        try {
+            target.executeJavaScript(js, "visionbrowser://command", 0);
+        } catch (Throwable error) {
+            status = "Command failed: " + error.getClass().getSimpleName();
         }
-        if (super.keyPressed(event)) return true;
-        if (event.key() == InputConstants.KEY_ESCAPE) {
-            onClose();
-            return true;
-        }
-        if (browser != null) {
-            browser.sendKeyPress(event);
-            browser.setFocus(true);
-            return true;
-        }
-        return false;
     }
 
-    @Override
-    public boolean keyReleased(KeyEvent event) {
-        if (super.keyReleased(event)) return true;
-        if (browser != null && (addressBar == null || !addressBar.isFocused())) {
-            browser.sendKeyRelease(event);
-            browser.setFocus(true);
-            return true;
-        }
-        return false;
+    static void togglePlay() {
+        long now = System.currentTimeMillis();
+        double p = positionSeconds();
+        playing = !playing;
+        positionSeconds = p;
+        positionUpdatedAt = now;
+        playLockUntil = now + 900;
+        exec(JS_TOGGLE);
     }
 
-    @Override
-    public boolean charTyped(CharacterEvent event) {
-        if (super.charTyped(event)) return true;
-        if (browser != null && event.codepoint() != 0) {
-            browser.sendKeyTyped((char) event.codepoint(), 0);
-            browser.setFocus(true);
-            return true;
-        }
-        return false;
+    static void seek(double seconds) {
+        double s = Math.max(0, durationSeconds > 0 ? Math.min(seconds, durationSeconds) : seconds);
+        positionSeconds = s;
+        positionUpdatedAt = System.currentTimeMillis();
+        exec(String.format(Locale.ROOT,
+                "(function(){" + JS_PREFIX + "if(v&&isFinite(%1$f))v.currentTime=%1$f;})();", s));
     }
 
-    @Override
-    public void onClose() {
-        minecraft.gui.setScreen(parentScreen);
+    static void setVolume(float value) {
+        float v = Math.max(0f, Math.min(1f, value));
+        volume = v;
+        muted = false;
+        volumeLockUntil = System.currentTimeMillis() + 1500;
+        exec(String.format(Locale.ROOT,
+                "(function(){" + JS_PREFIX + "if(v){v.muted=false;v.volume=%1$f;}"
+                        + "var p=document.getElementById('movie_player');"
+                        + "if(p&&p.setVolume){try{p.setVolume(%2$d);}catch(e){}}})();", v, Math.round(v * 100)));
     }
 
-    @Override
-    public boolean isPauseScreen() {
-        return false;
+    static void toggleMute() {
+        muted = !muted;
+        volumeLockUntil = System.currentTimeMillis() + 1500;
+        exec(JS_MUTE);
     }
 
-    @Override
-    public void removed() {
-        super.removed();
-        if (!rebuilding) FloatWindow.onScreenClosed();
+    static void next() { exec(JS_NEXT); }
+
+    static void previous() { exec(JS_PREV); }
+
+    // ------------------------------------------------------------------ state for the UI
+
+    static boolean hasMedia() {
+        return !lastTrackKey.isEmpty() && System.currentTimeMillis() - lastPayloadAt < 5000;
+    }
+
+    static String title() { return trackTitle; }
+    static String artist() { return artist; }
+    static String album() { return album; }
+    static boolean isPlaying() { return playing; }
+    static String status() { return status; }
+    static double durationSeconds() { return durationSeconds; }
+    static float volume() { return volume; }
+    static boolean isMuted() { return muted; }
+
+    static double positionSeconds() {
+        double p = positionSeconds;
+        if (playing) p += Math.max(0, System.currentTimeMillis() - positionUpdatedAt) / 1000.0;
+        return durationSeconds > 0 ? Math.min(p, durationSeconds) : p;
+    }
+
+    // ------------------------------------------------------------------ lyrics (unchanged behaviour, plus stale-result guard)
+
+    static void fetchLyrics(String title, String artist, double duration) {
+        final String requestKey = (title + "|" + artist).toLowerCase(Locale.ROOT);
+        Thread worker = new Thread(() -> {
+            try {
+                String query = "track_name=" + URLEncoder.encode(title, StandardCharsets.UTF_8)
+                        + "&artist_name=" + URLEncoder.encode(artist, StandardCharsets.UTF_8);
+                if (duration > 0 && duration < 3600) query += "&duration=" + Math.round(duration);
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create("https://lrclib.net/api/get?" + query))
+                        .timeout(Duration.ofSeconds(12))
+                        .header("User-Agent", "VisionBrowser/0.1.0 (Minecraft Fabric mod)")
+                        .GET().build();
+                HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+                if (!requestKey.equals(lastTrackKey)) return; // track changed while the request was running
+                if (response.statusCode() != 200) {
+                    FloatingLyrics.setUnavailable(response.statusCode() == 404
+                            ? "No synchronized lyrics found" : "Lyrics service unavailable");
+                    return;
+                }
+                JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+                String synced = json.has("syncedLyrics") && !json.get("syncedLyrics").isJsonNull()
+                        ? json.get("syncedLyrics").getAsString() : "";
+                if (synced.isBlank()) {
+                    FloatingLyrics.setUnavailable("This track has no timed lyrics");
+                    return;
+                }
+                FloatingLyrics.setLyrics(title, artist, synced);
+            } catch (Throwable error) {
+                if (requestKey.equals(lastTrackKey)) FloatingLyrics.setUnavailable("Could not load lyrics");
+            }
+        }, "VisionBrowser-LRCLIB");
+        worker.setDaemon(true);
+        worker.start();
     }
 }

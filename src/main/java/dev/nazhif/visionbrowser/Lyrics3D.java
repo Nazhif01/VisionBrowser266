@@ -18,34 +18,46 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Lyrics that float in the WORLD. Each line is a quad placed in world space when it becomes active and always turned to face the
- * camera; every frame its four corners are projected with the game's own camera (position, xRot, yRot) and projection matrix, and the pre-rendered
+ * Lyrics that float in the WORLD. Each line is a quad placed in world space when it becomes active; every frame its four
+ * corners are projected with the game's own camera (position, xRot, yRot) and projection matrix, and the pre-rendered
  * glowing text texture is drawn perspective-correct as thin vertical strips through the verified GUI blit call.
  * No raw OpenGL is used, so it does not depend on the renderer backend. Limitation: no occlusion by terrain.
  */
 final class Lyrics3D {
     private static final float BLOCKS_PER_PX = 0.012f;
-    private static final float DISTANCE = 7.0f;
-    private static final long LIFE_MS = 7500, FADE_IN_MS = 400, FADE_OUT_MS = 1500;
-    private static final int MAX_LINES = 3, FONT_SIZE = 48, PAD = 28, MAX_TEX_W = 1100;
+    private static final long FADE_IN_MS = 400, FADE_OUT_MS = 1500;
+    private static final int PAD = 28, MAX_TEX_W = 1100;
+    private static long lifeMs() { return Math.round(VisionSettings.lyricsLifeSeconds * 1000f); }
 
     private static final class Line {
         final long born = System.currentTimeMillis();
         final String text;
         final double cx, cy, cz;   // world centre at spawn
-        final double rx, rz;       // horizontal "right" unit vector
-        final double nx, nz;       // horizontal normal pointing at the player who saw it spawn
-        final float scale = VisionSettings.lyricsScale; // size multiplier captured at spawn
+        final double rx, rz;       // initial horizontal right vector
+        final double nx, nz;       // initial horizontal normal
+        final double forward, side, up, spawnYaw, spawnPitch;
+        float scale = VisionSettings.lyricsScale;
+        double smoothX, smoothY, smoothZ, smoothYaw, smoothPitch;
+        boolean smoothInitialized;
+        // player-view placement
+        boolean view, placed;
+        double ndcX, ndcY, viewDepth, hwN, hhN;
+        float fit = 1f;
+        long exitAt;
+        int renderRevision;
         float lift, liftTarget;
         volatile Identifier texture;
         volatile int texW, texH;
         volatile boolean released, failed;
 
-        Line(String text, double cx, double cy, double cz, double rx, double rz, double nx, double nz) {
+        Line(String text, double cx, double cy, double cz, double rx, double rz, double nx, double nz,
+             double forward, double side, double up, double yaw, double pitch) {
             this.text = text; this.cx = cx; this.cy = cy; this.cz = cz;
             this.rx = rx; this.rz = rz; this.nx = nx; this.nz = nz;
+            this.forward = forward; this.side = side; this.up = up; this.spawnYaw = yaw; this.spawnPitch = pitch;
         }
     }
 
@@ -72,22 +84,39 @@ final class Lyrics3D {
             Vec3 cp = cam.position();
             double yaw = Math.toRadians(cam.yRot()), pitch = Math.toRadians(cam.xRot());
             double lx = -Math.sin(yaw) * Math.cos(pitch), ly = -Math.sin(pitch), lz = Math.cos(yaw) * Math.cos(pitch);
+            if (VisionSettings.lyricsViewMode) {
+                long nowMs = System.currentTimeMillis();
+                for (Line old : lines) if (old.exitAt == 0) old.exitAt = nowMs;
+                Line v = new Line(text, cp.x, cp.y, cp.z, 1, 0, 0, 1, 0, 0, 0, 0, yaw, pitch);
+                v.view = true;
+                lines.add(v);
+                while (lines.size() > VisionSettings.lyricsMaxLines) release(lines.remove(0));
+                rasterize(v);
+                return;
+            }
             for (Line old : lines) old.liftTarget += 1.0f;
-            // placed to the SIDE of the view (slider: left .. right) so the lyrics never sit right in front of the player's eyes
-            double rxs = -Math.cos(yaw), rzs = -Math.sin(yaw), lat = VisionSettings.lyricsSide * 4.5;
-            Line line = new Line(text, cp.x + lx * DISTANCE + rxs * lat, cp.y + ly * DISTANCE + 0.6, cp.z + lz * DISTANCE + rzs * lat,
-                    -Math.cos(yaw), -Math.sin(yaw), Math.sin(yaw), -Math.cos(yaw));
+            // Offset from the player's view. In player-relative mode the render loop recalculates this anchor each frame.
+            double rxs = -Math.cos(yaw), rzs = -Math.sin(yaw);
+            double forward = VisionSettings.lyricsWorldDistance;
+            double lat = VisionSettings.lyricsSide * 4.5 + VisionSettings.lyricsHorizontalOffset;
+            double up = 0.6 + VisionSettings.lyricsVerticalOffset;
+            if (VisionSettings.lyricsGlowRandomPosition) {
+                ThreadLocalRandom random = ThreadLocalRandom.current();
+                double range = VisionSettings.lyricsGlowRandomRange;
+                if (range > 0.001) {
+                    lat += random.nextDouble(-range, range);
+                    forward += random.nextDouble(-range * 0.35, range * 0.35);
+                    up += random.nextDouble(-range * 0.22, range * 0.22);
+                }
+            }
+            Line line = new Line(text, cp.x + lx * forward + rxs * lat, cp.y + ly * forward + up, cp.z + lz * forward + rzs * lat,
+                    rxs, rzs, Math.sin(yaw), -Math.cos(yaw), forward, lat, up, yaw, pitch);
             lines.add(line);
-            while (lines.size() > MAX_LINES) release(lines.remove(0));
+            while (lines.size() > VisionSettings.lyricsMaxLines) release(lines.remove(0));
             rasterize(line);
         } catch (Throwable error) {
             status = "3D lyrics: cannot place line (" + error.getClass().getSimpleName() + ")";
         }
-    }
-
-    static void refreshAppearance() {
-        // Recreate the active line with the latest font and glow settings on the next HUD frame.
-        clear();
     }
 
     static void clear() {
@@ -98,9 +127,22 @@ final class Lyrics3D {
 
     private static void release(Line l) {
         l.released = true;
+        releaseTexture(l);
+    }
+
+    private static void releaseTexture(Line l) {
         Identifier t = l.texture;
         l.texture = null;
         if (t != null) Minecraft.getInstance().getTextureManager().release(t);
+    }
+
+    /** Rebuild visible glow textures after a live appearance setting changes. */
+    static void refreshAppearance() {
+        for (Line line : lines) {
+            if (line.released) continue;
+            releaseTexture(line);
+            rasterize(line);
+        }
     }
 
     // ------------------------------------------------------------------ text -> glowing texture
@@ -108,10 +150,11 @@ final class Lyrics3D {
     private static void rasterize(Line line) {
         final int accent = IslandArt.accent();
         final String family = VisionSettings.lyricsFont;
+        final int revision = ++line.renderRevision;
         Thread worker = new Thread(() -> {
             try {
                 Rendered r = renderText(line.text, accent, family);
-                Minecraft.getInstance().execute(() -> install(line, r));
+                Minecraft.getInstance().execute(() -> install(line, r, revision));
             } catch (Throwable error) {
                 line.failed = true;
                 status = "3D lyrics: text render failed (" + error.getClass().getSimpleName() + ")";
@@ -121,8 +164,8 @@ final class Lyrics3D {
         worker.start();
     }
 
-    private static void install(Line line, Rendered r) {
-        if (line.released) {
+    private static void install(Line line, Rendered r, int revision) {
+        if (line.released || revision != line.renderRevision) {
             r.image().close();
             return;
         }
@@ -130,17 +173,39 @@ final class Lyrics3D {
         Minecraft.getInstance().getTextureManager().register(id, new DynamicTexture(() -> "Vision lyric line", r.image()));
         line.texW = r.w();
         line.texH = r.h();
+        if (line.view && !line.placed) placeInView(line);
         line.texture = id;
     }
 
+    /** chooses the screen spot once the texture size (and so the on-screen size) is known */
+    private static void placeInView(Line line) {
+        ViewMath.Frame fr = ViewMath.frame(Minecraft.getInstance());
+        if (fr == null) { line.view = false; line.placed = true; return; }
+        double depth = VisionSettings.lyricsViewDepth, margin = VisionSettings.lyricsScreenMargin;
+        double scale = VisionSettings.lyricsScale;
+        double hwB = line.texW * BLOCKS_PER_PX * scale / 2.0, hhB = line.texH * BLOCKS_PER_PX * scale / 2.0;
+        double hwN = hwB / (depth * fr.tanH()), hhN = hhB / (depth * fr.tanV());
+        float fit = 1f;
+        if (VisionSettings.lyricsFitScreen) {
+            double room = 1.0 - margin;
+            fit = (float) Math.min(1.0, Math.min(room / Math.max(0.001, hwN), room / Math.max(0.001, hhN)));
+            hwN *= fit; hhN *= fit;
+        }
+        List<double[]> avoid = new ArrayList<>();
+        for (Line o : lines) if (o != line && o.view && o.placed && o.exitAt == 0) avoid.add(new double[]{o.ndcX, o.ndcY, o.hwN, o.hhN});
+        double[] spot = ViewMath.pick(hwN, hhN, VisionSettings.lyricsViewAnchor, VisionSettings.lyricsCrosshairExclude, margin, avoid);
+        line.ndcX = spot[0]; line.ndcY = spot[1]; line.viewDepth = depth; line.hwN = hwN; line.hhN = hhN; line.fit = fit;
+        line.placed = true;
+    }
+
     private static Rendered renderText(String text, int accentArgb, String family) {
-        int size = FONT_SIZE;
+        int size = VisionSettings.lyricsFontSize;
         java.awt.Font font = LyricFonts.make(family, size, text);
         BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D pg = probe.createGraphics();
         java.awt.FontMetrics fm = pg.getFontMetrics(font);
-        while (fm.stringWidth(text) > MAX_TEX_W - 2 * PAD && size > 20) {
-            size -= 3;
+        while (fm.stringWidth(text) > MAX_TEX_W - 2 * PAD && size > 8) {
+            size -= 2;
             font = font.deriveFont((float) size);
             fm = pg.getFontMetrics(font);
         }
@@ -159,7 +224,7 @@ final class Lyrics3D {
 
         float[] a = new float[w * h];
         for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) a[y * w + x] = ((base.getRGB(x, y) >>> 24) & 0xFF) / 255f;
-        float[] blur = boxBlur(boxBlur(boxBlur(a, w, h, 8), w, h, 8), w, h, 8);
+        float[] blur = boxBlur(boxBlur(a, w, h, Math.max(1, Math.round(VisionSettings.glowRadius))), w, h, Math.max(1, Math.round(VisionSettings.glowRadius)));
 
         // glow colour: the cover accent mixed 35% towards white so it stays luminous on dark skies
         int ar = Math.round(((accentArgb >> 16) & 0xFF) * 0.65f + 255 * 0.35f);
@@ -170,7 +235,7 @@ final class Lyrics3D {
             for (int x = 0; x < w; x++) {
                 int i = y * w + x;
                 float ta = a[i];
-                float ga = Math.min(1f, blur[i] * 2.6f);
+                float ga = Math.min(1f, blur[i] * VisionSettings.glowIntensity);
                 float oa = ta + ga * (1f - ta);
                 if (oa <= 0.003f) { out.setPixelABGR(x, y, 0); continue; }
                 float k = ga * (1f - ta);
@@ -243,16 +308,47 @@ final class Lyrics3D {
             status = "3D lyrics: ok" + (signY < 0 ? " (y flipped)" : "") + (signX < 0 ? " (x flipped)" : "");
 
             int gw = mc.getWindow().getGuiScaledWidth(), gh = mc.getWindow().getGuiScaledHeight();
-            // every line faces the camera completely (screen-parallel, pitch included) so it never looks flat or squashed
-            double ux = -rzv * ly, uy = rzv * lx - rxv * lz, uz = rxv * ly;
             for (Line l : lines) {
                 Identifier tex = l.texture;
                 if (tex == null || l.released) continue;
+                if (l.view) { renderView(g, l, tex, vp, cp, signX, signY, gw, gh, dt, now); continue; }
                 l.lift += (l.liftTarget - l.lift) * (1f - (float) Math.exp(-dt * 5f));
                 long age = now - l.born;
-                float alpha = Math.min(1f, age / (float) FADE_IN_MS) * Math.max(0f, Math.min(1f, (LIFE_MS - age) / (float) FADE_OUT_MS));
+                float alpha = Math.min(1f, age / (float) FADE_IN_MS) * Math.max(0f, Math.min(1f, (lifeMs() - age) / (float) FADE_OUT_MS));
                 alpha *= Math.max(0.3f, 1f - 0.35f * l.liftTarget);
-                double cx = l.cx, cy = l.cy + l.lift, cz = l.cz;
+                double useYaw = VisionSettings.lyricsFollowRotation ? yaw : l.spawnYaw;
+                double usePitch = VisionSettings.lyricsFollowRotation ? pitch : l.spawnPitch;
+                double fx = -Math.sin(useYaw) * Math.cos(usePitch), fy = -Math.sin(usePitch), fz = Math.cos(useYaw) * Math.cos(usePitch);
+                double rightX = -Math.cos(useYaw), rightZ = -Math.sin(useYaw);
+                double cx = l.cx, cy = l.cy, cz = l.cz;
+                double lineRx = l.rx, lineRz = l.rz, lineNx = l.nx, lineNz = l.nz;
+                if (VisionSettings.lyricsPlayerRelative) {
+                    double targetX = cp.x + fx * l.forward + rightX * l.side;
+                    double targetY = cp.y + fy * l.forward + l.up;
+                    double targetZ = cp.z + fz * l.forward + rightZ * l.side;
+                    if (!l.smoothInitialized) {
+                        l.smoothX = targetX; l.smoothY = targetY; l.smoothZ = targetZ;
+                        l.smoothYaw = useYaw; l.smoothPitch = usePitch;
+                        l.smoothInitialized = true;
+                    } else {
+                        double smooth = VisionSettings.lyricsGlowSmoothing;
+                        double tau = 0.015 + smooth * 0.42;
+                        double blend = smooth <= 0.001 ? 1.0 : 1.0 - Math.exp(-dt / tau);
+                        l.smoothX += (targetX - l.smoothX) * blend;
+                        l.smoothY += (targetY - l.smoothY) * blend;
+                        l.smoothZ += (targetZ - l.smoothZ) * blend;
+                        l.smoothYaw += wrapRadians(useYaw - l.smoothYaw) * blend;
+                        l.smoothPitch += (usePitch - l.smoothPitch) * blend;
+                    }
+                    double renderYaw = l.smoothYaw, renderPitch = l.smoothPitch;
+                    double renderRightX = -Math.cos(renderYaw), renderRightZ = -Math.sin(renderYaw);
+                    cx = l.smoothX; cy = l.smoothY; cz = l.smoothZ;
+                    lineRx = renderRightX; lineRz = renderRightZ;
+                    lineNx = Math.sin(renderYaw); lineNz = -Math.cos(renderYaw);
+                }
+                l.scale = VisionSettings.lyricsScale;
+                cy += l.lift;
+                if ((cp.x - cx) * lineNx + (cp.z - cz) * lineNz <= 0) continue; // seen from behind
                 double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
                 alpha *= (float) Math.max(0, Math.min(1, (dist - 0.8) / 1.5)) * (float) Math.max(0, Math.min(1, (64 - dist) / 24));
                 int a255 = Math.round(alpha * 255f);
@@ -263,9 +359,7 @@ final class Lyrics3D {
                 float[] sx = new float[4], sy = new float[4], sw = new float[4];
                 boolean visible = true;
                 for (int i = 0; i < 4; i++) {
-                    double wx = cx + rxv * corner[i][0] + ux * corner[i][1];
-                    double wy = cy + uy * corner[i][1];
-                    double wz = cz + rzv * corner[i][0] + uz * corner[i][1];
+                    double wx = cx + lineRx * corner[i][0], wy = cy + corner[i][1], wz = cz + lineRz * corner[i][0];
                     float[] n = ndc(vp, wx - cp.x, wy - cp.y, wz - cp.z);
                     if (n[2] < 0.1f) { visible = false; break; }
                     sx[i] = (n[0] * signX * 0.5f + 0.5f) * gw;
@@ -281,18 +375,81 @@ final class Lyrics3D {
         }
     }
 
+    private static void renderView(GuiGraphicsExtractor g, Line l, Identifier tex, Matrix4f vp, Vec3 cp, float signX, float signY,
+                                   int gw, int gh, float dt, long now) {
+        if (!l.placed) return;
+        ViewMath.Frame fr = ViewMath.frame(Minecraft.getInstance());
+        if (fr == null) return;
+        long age = now - l.born;
+        LyricAnim.Pose pose = LyricAnim.idle(now, l.born);
+        pose = LyricAnim.combine(pose, LyricAnim.enter(VisionSettings.lyricsAnimIn, age / (float) LyricAnim.inMs()));
+        long es = exitStart(l);
+        if (now >= es) pose = LyricAnim.combine(pose, LyricAnim.exit(VisionSettings.lyricsAnimOut, (now - es) / (float) LyricAnim.outMs()));
+        int a255 = Math.round(pose.alpha() * 255f);
+        if (a255 < 4) return;
+
+        double[] target = ViewMath.toWorld(fr, l.ndcX, l.ndcY, l.viewDepth);
+        double smooth = VisionSettings.lyricsViewSmoothing;
+        double k = smooth <= 0.001 ? 1.0 : 1.0 - Math.exp(-dt / (0.02 + smooth * 0.45));
+        if (!l.smoothInitialized) { l.smoothX = target[0]; l.smoothY = target[1]; l.smoothZ = target[2]; l.smoothInitialized = true; }
+        else { l.smoothX += (target[0] - l.smoothX) * k; l.smoothY += (target[1] - l.smoothY) * k; l.smoothZ += (target[2] - l.smoothZ) * k; }
+
+        float sc = VisionSettings.lyricsScale * l.fit * pose.scale();
+        float hw = l.texW * BLOCKS_PER_PX * sc / 2f, hh = l.texH * BLOCKS_PER_PX * sc / 2f;
+        double unit = l.texH * BLOCKS_PER_PX * VisionSettings.lyricsScale * l.fit * 0.6;
+        double[] p = {l.smoothX + fr.rx() * pose.dx() * unit + fr.ux() * pose.dy() * unit,
+                l.smoothY + fr.uy() * pose.dy() * unit,
+                l.smoothZ + fr.rz() * pose.dx() * unit + fr.uz() * pose.dy() * unit};
+        if (VisionSettings.lyricsFitScreen) p = ViewMath.clampInside(fr, p, hw, hh, VisionSettings.lyricsScreenMargin);
+        double cx = p[0], cy = p[1], cz = p[2];
+
+        // always face the player: the quad normal points from its centre to the camera, so the text is never seen from behind
+        double lineRx, lineRz;
+        if (VisionSettings.lyricsFaceAlways) {
+            double dx = cp.x - cx, dz = cp.z - cz, len = Math.hypot(dx, dz);
+            if (len < 1e-4) return;
+            lineRx = dz / len; lineRz = -dx / len;
+        } else {
+            double yaw = Math.toRadians(Minecraft.getInstance().gameRenderer.mainCamera().yRot());
+            lineRx = -Math.cos(yaw); lineRz = -Math.sin(yaw);
+        }
+        float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}};
+        float[] sx = new float[4], sy = new float[4], sw = new float[4];
+        for (int i = 0; i < 4; i++) {
+            double wx = cx + lineRx * corner[i][0], wy = cy + corner[i][1], wz = cz + lineRz * corner[i][0];
+            float[] n = ndc(vp, wx - cp.x, wy - cp.y, wz - cp.z);
+            if (n[2] < 0.1f) return;
+            sx[i] = (n[0] * signX * 0.5f + 0.5f) * gw;
+            sy[i] = (0.5f - n[1] * signY * 0.5f) * gh;
+            sw[i] = n[2];
+        }
+        drawStrips(g, tex, l.texW, l.texH, sx, sy, sw, gw, a255);
+    }
+
+    private static long exitStart(Line l) {
+        return l.exitAt > 0 ? l.exitAt : l.born + lifeMs() - LyricAnim.outMs();
+    }
+
     private static void prune(long now) {
         Iterator<Line> it = lines.iterator();
         while (it.hasNext()) {
             Line l = it.next();
-            if (now - l.born > LIFE_MS || l.failed) {
+            boolean expired = l.view ? now > exitStart(l) + LyricAnim.outMs() : now - l.born > lifeMs();
+            if (expired || l.failed) {
                 release(l);
                 it.remove();
             }
         }
+        while (lines.size() > VisionSettings.lyricsMaxLines) release(lines.remove(0));
     }
 
     /** returns {ndcX, ndcY, clipW} for a point given relative to the camera */
+    private static double wrapRadians(double value) {
+        while (value > Math.PI) value -= Math.PI * 2.0;
+        while (value < -Math.PI) value += Math.PI * 2.0;
+        return value;
+    }
+
     private static float[] ndc(Matrix4f vp, double rx, double ry, double rz) {
         Vector4f c = vp.transform(new Vector4f((float) rx, (float) ry, (float) rz, 1f));
         return new float[]{c.x / c.w, c.y / c.w, c.w};

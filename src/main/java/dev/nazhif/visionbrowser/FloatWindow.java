@@ -1,284 +1,128 @@
 package dev.nazhif.visionbrowser;
 
-import de.keksuccino.rinku.RinkuBrowser;
-import de.keksuccino.rinku.RinkuRenderCoordinator;
-import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
-import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
-import net.minecraft.client.Camera;
-import net.minecraft.client.DeltaTracker;
+import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
-import org.joml.Vector4f;
 
-/**
- * Apple-Vision-Pro-style floating browser window in the 3D world.
- * LOCKED: the window follows the player (smooth, floaty).
- * FREE  : the window stays at the spot where the lock was released.
- * In both modes it always faces the camera completely (pitch included), so it never looks flat or squashed.
- * The live browser texture is projected with the game's own camera + projection matrix and drawn perspective-correct as
- * thin strips through the verified GUI blit call (see Lyrics3D). Corners are rounded in plane space, with a glass rim and glow.
- * Frameless: only the page with rounded corners (plus a small capsule under it that shows the lock state).
- * Size comes from VisionSettings.floatWidth (slider in the chat panel). Limitation: no occlusion by terrain; display only.
- */
-final class FloatWindow {
-    private static final int PX_W = 1280, PX_H = 720;          // browser resolution used while floating
-    private static final float ASPECT = PX_W / (float) PX_H;
-    private static final int VIRT = 8192;                       // virtual texture size: UVs are normalised, real size is irrelevant
+import javax.imageio.ImageIO;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 
-    private static boolean enabled, locked = true, screenOpen;
-    private static final float distance = 3.0f;
-    private static double cx, cy, cz;
-    private static boolean poseInit;
-    private static boolean fixedOrientationInit;
-    private static double fixedRightX, fixedRightZ;
-    private static long enabledAt, lastNanos, toastUntil;
-    private static String toast = "";
-    private static volatile String status = "Floating window: off";
+/** Downloads the current cover art, rounds its corners and exposes it as a GUI texture. */
+final class IslandArt {
+    private static final int SIZE = 128;
+    private static final HttpClient HTTP = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(8)).followRedirects(HttpClient.Redirect.NORMAL).build();
+    private static volatile String requestedUrl = "";
+    private static volatile Identifier current;
+    private static volatile int accent = 0xFF7C8CFF;
+    private static volatile int pendingAccent = 0xFF7C8CFF;
+    private static int counter;
 
-    private interface Painter { void paint(int x, int top, int height, int step, float t0, float t1, float u0, float u1); }
+    private IslandArt() { }
 
-    private FloatWindow() { }
+    static Identifier current() { return current; }
 
-    static void register() {
-        locked = VisionSettings.floatLocked;
-        HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
-                Identifier.fromNamespaceAndPath("visionbrowser", "floating_window"), FloatWindow::render);
-    }
+    /** Average colour of the current cover (opaque ARGB), used for the glass glow. */
+    static int accent() { return accent; }
 
-    static boolean isEnabled() { return enabled; }
-    static boolean isLocked() { return locked; }
-    static String status() { return status; }
-
-    static void setEnabled(boolean on) {
-        enabled = on;
-        if (on) {
-            poseInit = false;
-            fixedOrientationInit = false;
-            enabledAt = System.currentTimeMillis();
-            applySize();
-            say("Floating window ON (" + (locked ? "locked" : "free") + ")");
-        } else {
-            say("Floating window OFF");
-        }
-    }
-
-    static void toggle() { setEnabled(!enabled); }
-
-    static boolean isBillboard() { return VisionSettings.floatBillboard; }
-
-    static void toggleBillboard() {
-        VisionSettings.floatBillboard = !VisionSettings.floatBillboard;
-        fixedOrientationInit = false;
-        VisionSettings.save();
-        say(VisionSettings.floatBillboard ? "Window BILLBOARD: on" : "Window BILLBOARD: off");
-    }
-
-    static void toggleLock() {
-        locked = !locked;
-        VisionSettings.floatLocked = locked;
-        VisionSettings.save();
-        say(locked ? "Window LOCKED: it follows you" : "Window FREE: it stays where you left it");
-    }
-
-    static void onScreenOpened() { screenOpen = true; }
-
-    static void onScreenClosed() {
-        screenOpen = false;
-        if (enabled) applySize();
-    }
-
-    private static void applySize() {
-        RinkuBrowser b = VisionBrowserClient.getActiveBrowser();
-        if (b == null) return;
-        try {
-            b.resize(PX_W, PX_H);
-        } catch (Throwable error) {
-            status = "Floating window: cannot resize browser (" + error.getClass().getSimpleName() + ")";
-        }
-    }
-
-    private static void say(String text) {
-        toast = text;
-        toastUntil = System.currentTimeMillis() + 1800;
-    }
-
-    // ------------------------------------------------------------------ per-frame
-
-    private static void render(GuiGraphicsExtractor g, DeltaTracker tickCounter) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
-        long now = System.currentTimeMillis();
-        if (now < toastUntil) {
-            int w = mc.font.width(toast);
-            g.text(mc.font, toast, (mc.getWindow().getGuiScaledWidth() - w) / 2, 44, 0xFFFFFFFF, false);
-        }
-        if (!enabled || screenOpen) return;
-        RinkuBrowser browser = VisionBrowserClient.getActiveBrowser();
-        if (browser == null) {
-            String t = "Floating window: open the browser once first";
-            g.text(mc.font, t, (mc.getWindow().getGuiScaledWidth() - mc.font.width(t)) / 2, 56, 0xFFFFAA66, false);
+    static void request(String url) {
+        String wanted = url == null ? "" : url;
+        if (wanted.equals(requestedUrl)) return;
+        requestedUrl = wanted;
+        if (wanted.isEmpty()) {
+            Minecraft.getInstance().execute(() -> install(null, "", 0xFF7C8CFF));
             return;
         }
-        try {
-            RinkuRenderCoordinator.pumpOnRenderThread();
-            if (!browser.isTextureReady()) return;
-            Identifier tex = browser.getTextureIdentifier();
-            if (tex == null) return;
-
-            long nano = System.nanoTime();
-            float dt = lastNanos == 0 ? 0.016f : Math.min(0.1f, (nano - lastNanos) / 1_000_000_000f);
-            lastNanos = nano;
-
-            Camera cam = mc.gameRenderer.mainCamera();
-            CameraRenderState crs = mc.gameRenderer.gameRenderState().levelRenderState.cameraRenderState;
-            Matrix4f proj = crs.projectionMatrix;
-            if (proj == null || !proj.isFinite()) { status = "Floating window: no projection matrix"; return; }
-            double yaw = Math.toRadians(cam.yRot()), pitch = Math.toRadians(cam.xRot());
-            Matrix4f vp = new Matrix4f(proj).mul(new Matrix4f().rotateX((float) pitch).rotateY((float) yaw + (float) Math.PI));
-            Vec3 cp = cam.position();
-
-            double lx = -Math.sin(yaw) * Math.cos(pitch), ly = -Math.sin(pitch), lz = Math.cos(yaw) * Math.cos(pitch);
-            double rxv = -Math.cos(yaw), rzv = -Math.sin(yaw);
-            float[] mid = ndc(vp, lx * 5, ly * 5, lz * 5);
-            float[] up = ndc(vp, lx * 5, ly * 5 + 0.5, lz * 5);
-            float[] rt = ndc(vp, lx * 5 + rxv * 0.5, ly * 5, lz * 5 + rzv * 0.5);
-            if (mid[2] <= 0 || Math.abs(mid[0]) > 0.1f || Math.abs(mid[1]) > 0.1f) {
-                status = String.format(java.util.Locale.ROOT, "Floating window: camera mismatch (look ndc %.2f, %.2f)", mid[0], mid[1]);
-                return;
+        Thread worker = new Thread(() -> {
+            NativeImage image = null;
+            int found = 0xFF7C8CFF;
+            // Unverified assumption: Google image hosts accept a "=w256-h256-l90-rj" size/format suffix (JPEG output).
+            String[] candidates = wanted.contains("googleusercontent.com") && wanted.matches(".*=w\\d+-h\\d+.*")
+                    ? new String[]{wanted.replaceAll("=w\\d+-h\\d+[^?]*$", "=w256-h256-l90-rj"), wanted}
+                    : new String[]{wanted};
+            for (String candidate : candidates) {
+                try {
+                    image = download(candidate);
+                    if (image != null) { found = pendingAccent; break; }
+                } catch (Throwable ignored) { }
             }
-            float signY = up[1] >= mid[1] ? 1f : -1f, signX = rt[0] >= mid[0] ? 1f : -1f;
-            status = "Floating window: ok" + (locked ? " (locked)" : " (free)");
-
-            // pose: follow the camera while locked, freeze when free
-            double tx = cp.x + lx * distance, ty = cp.y + ly * distance, tz = cp.z + lz * distance;
-            if (!poseInit) { cx = tx; cy = ty; cz = tz; poseInit = true; }
-            if (locked) {
-                double k = 1.0 - Math.exp(-dt * 9.0);
-                cx += (tx - cx) * k; cy += (ty - cy) * k; cz += (tz - cz) * k;
+            final NativeImage result = image;
+            final int resultAccent = found;
+            if (!wanted.equals(requestedUrl)) {
+                if (result != null) result.close();
+                return; // a newer request replaced this one
             }
-            // The window always faces the camera completely (screen-parallel, pitch included), so it never looks squashed when the
-            // player looks up or down. right = camera right (horizontal), up = right x forward.
-            double[] right;
-            double[] upv;
-            if (VisionSettings.floatBillboard) {
-                // Billboard mode: keep the display parallel to the camera, including pitch.
-                right = new double[]{rxv, 0, rzv};
-                upv = new double[]{-rzv * ly, rzv * lx - rxv * lz, rxv * ly};
-            } else {
-                // Non-billboard mode: ignore camera pitch and head yaw.
-                // Follow the player's body yaw continuously, allowing a full 360-degree turn
-                // without tilting the window when the player looks up or down.
-                double playerYaw = Math.toRadians(mc.player.getYRot());
-                right = new double[]{-Math.cos(playerYaw), 0, -Math.sin(playerYaw)};
-                upv = new double[]{0, 1, 0};
+            Minecraft.getInstance().execute(() -> install(result, wanted, resultAccent));
+        }, "VisionBrowser-IslandArt");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private static NativeImage download(String url) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(12))
+                .header("User-Agent", "VisionBrowser/0.1.0 (Minecraft Fabric mod)").GET().build();
+        HttpResponse<byte[]> response = HTTP.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        if (response.statusCode() != 200 || response.body().length == 0 || response.body().length > 6_000_000) return null;
+        BufferedImage source = ImageIO.read(new ByteArrayInputStream(response.body())); // JPEG/PNG; WebP is not supported by ImageIO
+        if (source == null) return null;
+        BufferedImage square = new BufferedImage(SIZE, SIZE, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = square.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        int side = Math.min(source.getWidth(), source.getHeight());
+        int sx = (source.getWidth() - side) / 2, sy = (source.getHeight() - side) / 2;
+        g.drawImage(source, 0, 0, SIZE, SIZE, sx, sy, sx + side, sy + side, null);
+        g.dispose();
+        NativeImage out = new NativeImage(SIZE, SIZE, false);
+        long sr = 0, sg = 0, sb = 0, count = 0;
+        float radius = 24f, half = SIZE / 2f;
+        for (int y = 0; y < SIZE; y++) {
+            for (int x = 0; x < SIZE; x++) {
+                float qx = Math.abs(x + 0.5f - half) - (half - radius);
+                float qy = Math.abs(y + 0.5f - half) - (half - radius);
+                float d = (float) Math.hypot(Math.max(qx, 0f), Math.max(qy, 0f)) + Math.min(Math.max(qx, qy), 0f) - radius;
+                float coverage = Math.max(0f, Math.min(1f, 0.5f - d));
+                int argb = square.getRGB(x, y);
+                int a = Math.round(((argb >>> 24) & 0xFF) * coverage);
+                int r = (argb >> 16) & 0xFF, gr = (argb >> 8) & 0xFF, b = argb & 0xFF;
+                if (coverage > 0.9f) { sr += r; sg += gr; sb += b; count++; }
+                out.setPixelABGR(x, y, (a << 24) | (b << 16) | (gr << 8) | r);
             }
-
-            double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
-            float fade = Math.min(1f, (now - enabledAt) / 350f) * (float) Math.max(0, Math.min(1, (dist - 0.5) / 1.0));
-            int a = Math.round(fade * 255f);
-            if (a < 4) return;
-
-            int gw = mc.getWindow().getGuiScaledWidth(), gh = mc.getWindow().getGuiScaledHeight();
-            float hw = VisionSettings.floatWidth / 2f, hh = hw / ASPECT;
-            int accent = IslandArt.accent() & 0xFFFFFF;
-            Ctx c = new Ctx(vp, cp, signX, signY, gw, gh, right, upv);
-
-            // frameless: just the live page with rounded corners (no rim, no glow ring)
-            int color = (a << 24) | 0xFFFFFF;
-            layer(g, c, cy, hw, hh, 0f, 1, (x, top, height, step, t0, t1, u0, u1) ->
-                    g.blit(RenderPipelines.GUI_TEXTURED, tex, x, top, u0 * VIRT, t0 * VIRT, step, height,
-                            Math.max(1, Math.round((u1 - u0) * VIRT)), Math.max(1, Math.round((t1 - t0) * VIRT)), VIRT, VIRT, color));
-            // lock indicator capsule under the window: bright accent = locked, white = free
-            double drop = hh + 0.14;
-            int barColor = locked ? ((a * 0xB0 / 255 << 24) | accent | 0x303030) : ((a * 0x60 / 255 << 24) | 0xFFFFFF);
-            capsule(g, c, cx - upv[0] * drop, cy - upv[1] * drop, cz - upv[2] * drop, 0.16f, 0.018f, barColor);
-        } catch (Throwable error) {
-            status = "Floating window: error (" + error.getClass().getSimpleName() + ")";
         }
-    }
-
-    private static Painter fillPainter(GuiGraphicsExtractor g, int argb) {
-        return (x, top, height, step, t0, t1, u0, u1) -> g.fill(x, top, x + step, top + height, argb);
-    }
-
-    private record Ctx(Matrix4f vp, Vec3 cp, float signX, float signY, int gw, int gh, double[] r, double[] u) { }
-
-    /** one rounded quad of the window plane, enlarged by margin (blocks) */
-    private static void layer(GuiGraphicsExtractor g, Ctx c, double centerY, float hw, float hh, float margin, int step, Painter p) {
-        float w = hw + margin, h = hh + margin;
-        float rv = Math.min(0.5f, (0.14f * hh + margin) / (2f * h));
-        quad(c, cx, centerY, cz, w, h, rv, w / h, step, p);
-    }
-
-    private static void capsule(GuiGraphicsExtractor g, Ctx c, double qx, double qy, double qz, float hw, float hh, int argb) {
-        quad(c, qx, qy, qz, hw, hh, 0.5f, hw / hh, 1, fillPainter(g, argb));
-    }
-
-    private static void quad(Ctx c, double qx, double qy, double qz, float hw, float hh, float rv, float aspect, int step, Painter p) {
-        float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}};   // TL, TR, BR, BL
-        float[] sx = new float[4], sy = new float[4], sw = new float[4];
-        for (int i = 0; i < 4; i++) {
-            double wx = qx + c.r()[0] * corner[i][0] + c.u()[0] * corner[i][1];
-            double wy = qy + c.r()[1] * corner[i][0] + c.u()[1] * corner[i][1];
-            double wz = qz + c.r()[2] * corner[i][0] + c.u()[2] * corner[i][1];
-            float[] n = ndc(c.vp(), wx - c.cp().x, wy - c.cp().y, wz - c.cp().z);
-            if (n[2] < 0.1f) return;
-            sx[i] = (n[0] * c.signX() * 0.5f + 0.5f) * c.gw();
-            sy[i] = (0.5f - n[1] * c.signY() * 0.5f) * c.gh();
-            sw[i] = n[2];
+        if (count > 0) {
+            int ar = (int) (sr / count), ag = (int) (sg / count), ab = (int) (sb / count);
+            int peak = Math.max(ar, Math.max(ag, ab));
+            if (peak < 150 && peak > 0) { float k = 150f / peak; ar = Math.min(255, Math.round(ar * k)); ag = Math.min(255, Math.round(ag * k)); ab = Math.min(255, Math.round(ab * k)); }
+            pendingAccent = 0xFF000000 | (ar << 16) | (ag << 8) | ab;
         }
-        strips(sx, sy, sw, c.gw(), rv, aspect, step, p);
+        return out;
     }
 
-    // ------------------------------------------------------------------ projection helpers
-
-    private static float[] ndc(Matrix4f vp, double rx, double ry, double rz) {
-        Vector4f v = vp.transform(new Vector4f((float) rx, (float) ry, (float) rz, 1f));
-        return new float[]{v.x / v.w, v.y / v.w, v.w};
-    }
-
-    private static float persp(float t, float wa, float wb) {
-        float c = Math.max(0f, Math.min(1f, t));
-        float den = (1f - c) / wa + c / wb;
-        return den == 0f ? c : (c / wb) / den;
-    }
-
-    private static float uAt(float x, float[] sx, float[] sw) {
-        float tT = (x - sx[0]) / (sx[1] - sx[0]);
-        float tB = (x - sx[3]) / (sx[2] - sx[3]);
-        return 0.5f * (persp(tT, sw[0], sw[1]) + persp(tB, sw[3], sw[2]));
-    }
-
-    private static float cornerInset(float p, float rv, float aspect) {
-        float ru = rv / aspect, d;
-        if (p < ru) d = (ru - p) * aspect;
-        else if (p > 1f - ru) d = (p - (1f - ru)) * aspect;
-        else return 0f;
-        return rv - (float) Math.sqrt(Math.max(0f, rv * rv - d * d));
-    }
-
-    private static void strips(float[] sx, float[] sy, float[] sw, int gw, float rv, float aspect, int step, Painter p) {
-        if (Math.abs(sx[1] - sx[0]) < 1f || Math.abs(sx[2] - sx[3]) < 1f) return;
-        if (sx[1] < sx[0] || sx[2] < sx[3]) return;
-        float left = Math.max(sx[0], sx[3]), right = Math.min(sx[1], sx[2]);
-        int x0 = Math.max(0, (int) Math.ceil(left)), x1 = Math.min(gw, (int) Math.floor(right));
-        for (int x = x0; x < x1; x += step) {
-            float xc = x + step * 0.5f;
-            float tT = Math.max(0f, Math.min(1f, (xc - sx[0]) / (sx[1] - sx[0])));
-            float tB = Math.max(0f, Math.min(1f, (xc - sx[3]) / (sx[2] - sx[3])));
-            float pu = 0.5f * (persp(tT, sw[0], sw[1]) + persp(tB, sw[3], sw[2]));
-            float inset = rv <= 0f ? 0f : cornerInset(pu, rv, aspect);
-            float yTop = sy[0] + (sy[1] - sy[0]) * tT, yBot = sy[3] + (sy[2] - sy[3]) * tB;
-            float h = yBot - yTop;
-            float t0 = inset, t1 = 1f - inset;
-            int top = Math.round(yTop + h * t0), bottom = Math.round(yTop + h * t1);
-            if (bottom - top < 1) continue;
-            p.paint(x, top, bottom - top, step, t0, t1, uAt(x, sx, sw), uAt(x + step, sx, sw));
+    /** Must run on the client thread. */
+    private static void install(NativeImage image, String url, int accentColor) {
+        if (!url.equals(requestedUrl)) {
+            if (image != null) image.close();
+            return;
         }
+        Minecraft mc = Minecraft.getInstance();
+        Identifier old = current;
+        accent = accentColor;
+        if (image == null) {
+            current = null;
+        } else {
+            Identifier id = Identifier.fromNamespaceAndPath("visionbrowser", "island_art_" + (++counter));
+            mc.getTextureManager().register(id, new DynamicTexture(() -> "Vision island cover", image));
+            current = id;
+        }
+        if (old != null) mc.getTextureManager().release(old);
     }
 }

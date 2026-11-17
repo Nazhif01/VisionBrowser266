@@ -2,242 +2,318 @@ package dev.nazhif.visionbrowser;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import de.keksuccino.rinku.Rinku;
+import de.keksuccino.rinku.RinkuBrowser;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import org.cef.browser.CefBrowser;
+import org.cef.handler.CefDisplayHandlerAdapter;
 
+import java.net.URI;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.time.Duration;
+import java.util.Locale;
 
-/** All user-adjustable values, edited in the chat settings window. Saved to config/visionbrowser.json. */
-final class VisionSettings {
-    static final int MODE_TEXT = 0, MODE_GLOW = 1, MODE_HUD = 2;
+/**
+ * Reads playback state from the browser page and sends control commands back.
+ *
+ * Read path : injected JS -> document.title -> CefDisplayHandler.onTitleChange (registered on Rinku.getClient()).
+ *             Rinku 3.0.5 has NO getTitle() method, so a handler is the only title channel.
+ * Write path: RinkuBrowser.executeJavaScript(code, url, line) (inherited from CefBrowser).
+ * All Rinku calls are made on the Minecraft client thread (tick / UI events), the same thread the rest of the mod uses.
+ */
+final class VisionMediaBridge {
+    private static final String PREFIX = "__VISION_MEDIA__";
+    private static final int SCRIPT_VERSION = 3;
 
-    // ---- floating window
-    static volatile float floatWidth = 1.8f;
-    static volatile float floatDistance = 3.0f;
-    static volatile float floatHeight = 0f;
-    static volatile float floatSide = 0f;
-    static volatile float floatFollowSpeed = 9f;
-    static volatile float floatOpacity = 1f;
-    static volatile float floatCorner = 0.14f;
-    static volatile boolean floatLocked = true;
-    static volatile boolean floatBillboard = true;
-    static volatile boolean floatLockBar = true;
-    static volatile boolean floatToast = true;
+    private static volatile boolean handlerRegistered;
+    private static volatile CefBrowser mediaBrowser;
+    private static volatile int mediaBrowserId = -1;
+    private static volatile String trackTitle = "";
+    private static volatile String artist = "";
+    private static volatile String album = "";
+    private static volatile String artUrl = "";
+    private static volatile boolean playing;
+    private static volatile double positionSeconds;
+    private static volatile double durationSeconds;
+    private static volatile float volume = 1f;
+    private static volatile boolean muted;
+    private static volatile long positionUpdatedAt;
+    private static volatile long lastPayloadAt;
+    private static volatile long playLockUntil;
+    private static volatile long volumeLockUntil;
+    private static volatile String lastTrackKey = "";
+    private static volatile String status = "Open a music page in Vision Browser";
+    private static int tickCounter;
 
-    // ---- dynamic island
-    static volatile boolean islandShow = true;
-    static volatile float islandScale = 1.0f;
-    static volatile float islandOffsetX = 0f;
-    static volatile float islandOffsetY = 0f;
+    private static final HttpClient HTTP = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(8)).build();
 
-    // ---- lyrics: general
-    static volatile int lyricsMode = MODE_TEXT;
-    static volatile boolean lyricsAlbumColor = true;
-    static volatile float lyricsScale = 1.0f;
-    static volatile boolean lyricsReveal = true;
-    static volatile boolean lyricsWordByWord = false;
-    static volatile float lyricsWordSpeed = 0.22f;
-    static volatile int lyricsMaxLines = 3;
-    static volatile float lyricsLifeSeconds = 7.5f;
+    private static final String CAPTURE_SCRIPT = ("(function(){try{"
+            + "if(window.__vmV===@V@)return;window.__vmV=@V@;"
+            + "var P='@PREFIX@',last='';"
+            + "function el(){var c=[document.querySelector('video'),document.querySelector('audio')];"
+            + "for(var i=0;i<c.length;i++){if(c[i]&&c[i].readyState>0)return c[i];}return c[0]||c[1];}"
+            + "function art(m){try{var a=m&&m.artwork;if(a&&a.length){return a[a.length-1].src||'';}}catch(e){}return '';}"
+            + "function scan(){try{var v=el();if(!v)return;"
+            + "var m=navigator.mediaSession&&navigator.mediaSession.metadata;"
+            + "var t=(m&&m.title)||'',a=(m&&m.artist)||'',al=(m&&m.album)||'';"
+            + "if(!t){var x=document.querySelector('ytmusic-player-bar .title');if(x)t=(x.textContent||'').trim();}"
+            + "if(!a){var y=document.querySelector('ytmusic-player-bar .byline');if(y)a=(y.textContent||'').trim();}"
+            + "if(!t)return;"
+            + "var o={t:t,a:a,al:al,art:art(m),on:!v.paused&&!v.ended,pos:v.currentTime||0,"
+            + "dur:isFinite(v.duration)?v.duration:0,vol:v.volume,mut:!!v.muted};"
+            + "var n=P+encodeURIComponent(JSON.stringify(o));"
+            + "if(n!==last){last=n;document.title=n;}"
+            + "}catch(e){}}"
+            + "scan();setInterval(scan,500);"
+            + "['play','pause','loadedmetadata','seeked','volumechange'].forEach(function(ev){document.addEventListener(ev,scan,true);});"
+            + "}catch(e){}})();")
+            .replace("@V@", Integer.toString(SCRIPT_VERSION)).replace("@PREFIX@", PREFIX);
 
-    // ---- lyrics: world placement (classic)
-    static volatile float lyricsDistance = 18f;
-    static volatile float lyricsSpread = 1.0f;
-    static volatile float lyricsSide = 0.6f;
-    static volatile float lyricsVerticalOffset = 1.4f;
-    static volatile float lyricsHorizontalOffset = 0f;
-    static volatile float lyricsWorldDistance = 7f;
-    static volatile boolean lyricsGlowRandomPosition = true;
-    static volatile float lyricsGlowRandomRange = 3.5f;
-    static volatile boolean lyricsPlayerRelative = false;
-    static volatile boolean lyricsFollowRotation = true;
-    static volatile float lyricsGlowSmoothing = 0.55f;
+    private static final String JS_PREFIX = "var v=document.querySelector('video,audio');";
+    private static final String JS_MEDIA_HELPERS =
+            "function deep(sel){var q=[document];while(q.length){var r=q.shift();try{var e=r.querySelector(sel);if(e)return e;"
+            + "var all=r.querySelectorAll('*');for(var i=0;i<all.length;i++)if(all[i].shadowRoot)q.push(all[i].shadowRoot);}catch(e){}}return null;}"
+            + "function media(){return document.querySelector('video,audio');}"
+            + "function clickAny(ids){for(var i=0;i<ids.length;i++){var b=deep(ids[i]);if(b){b.click();return true;}}return false;}";
+    private static final String JS_TOGGLE = "(function(){"+JS_MEDIA_HELPERS
+            + "var v=media();if(v){if(v.paused){var p=v.play();if(p&&p.catch)p.catch(function(){});}else{v.pause();}return;}"
+            + "clickAny(['ytmusic-player-bar #play-pause-button','#play-pause-button','button[aria-label*=Pause]','button[aria-label*=Play]']);})();";
+    private static final String JS_MUTE = "(function(){"+JS_MEDIA_HELPERS+"var v=media();if(v)v.muted=!v.muted;})();";
+    private static final String JS_NEXT = "(function(){"+JS_MEDIA_HELPERS
+            + "if(clickAny(['ytmusic-player-bar #next-button','#next-button','.next-button','.ytp-next-button','button[aria-label*=Next]']))return;"
+            + "var v=media();if(v&&v.duration>0)v.currentTime=Math.min(v.duration,v.currentTime+10);})();";
+    private static final String JS_PREV = "(function(){"+JS_MEDIA_HELPERS
+            + "if(clickAny(['ytmusic-player-bar #previous-button','#previous-button','.previous-button','.ytp-prev-button','button[aria-label*=Previous]']))return;"
+            + "var v=media();if(v)v.currentTime=0;})();";
 
-    // ---- lyrics: player view (random spot in the view, never on the crosshair, always fully on screen, always facing the player)
-    static volatile boolean lyricsViewMode = true;
-    static volatile int lyricsViewAnchor = 0;          // 0 random, 1 top, 2 bottom, 3 upper-left, 4 upper-right, 5 lower-left, 6 lower-right
-    static volatile float lyricsViewDepth = 9f;
-    static volatile float lyricsCrosshairExclude = 0.32f;
-    static volatile float lyricsScreenMargin = 0.08f;
-    static volatile float lyricsViewSmoothing = 0.35f;
-    static volatile boolean lyricsFaceAlways = true;
-    static volatile boolean lyricsFitScreen = true;
+    private VisionMediaBridge() { }
 
-    // ---- lyrics: animation
-    static volatile int lyricsAnimIn = 2;
-    static volatile int lyricsAnimOut = 1;
-    static volatile float lyricsAnimSpeed = 1f;
-    static volatile float lyricsBob = 0f;
-    static volatile float lyricsPulse = 0f;
-
-    // ---- lyrics: glow texture
-    static volatile String lyricsFont = "Dialog";
-    static volatile int lyricsFontSize = 48;
-    static volatile float glowIntensity = 2.6f;
-    static volatile float glowRadius = 8f;
-
-    // ---- lyrics: HUD
-    static volatile int hudPosition = 0;
-    static volatile int hudLines = 3;
-    static volatile boolean hudPanel = false;
-
-    private static final Path FILE = Path.of("config", "visionbrowser.json");
-    private static final JsonObject DEFAULTS = toJson();
-
-    private VisionSettings() { }
-
-    static float clamp(float v, float lo, float hi) { return Math.max(lo, Math.min(hi, v)); }
-    private static int clampI(int v, int lo, int hi) { return Math.max(lo, Math.min(hi, v)); }
-
-    private static float f(JsonObject o, String k, float cur, float lo, float hi) { return o.has(k) ? clamp(o.get(k).getAsFloat(), lo, hi) : cur; }
-    private static int i(JsonObject o, String k, int cur, int lo, int hi) { return o.has(k) ? clampI(o.get(k).getAsInt(), lo, hi) : cur; }
-    private static boolean b(JsonObject o, String k, boolean cur) { return o.has(k) ? o.get(k).getAsBoolean() : cur; }
-
-    private static void apply(JsonObject o) {
-        floatWidth = f(o, "floatWidth", floatWidth, 0.6f, 7f);
-        floatDistance = f(o, "floatDistance", floatDistance, 1.2f, 10f);
-        floatHeight = f(o, "floatHeight", floatHeight, -2f, 2f);
-        floatSide = f(o, "floatSide", floatSide, -3f, 3f);
-        floatFollowSpeed = f(o, "floatFollowSpeed", floatFollowSpeed, 1f, 30f);
-        floatOpacity = f(o, "floatOpacity", floatOpacity, 0.15f, 1f);
-        floatCorner = f(o, "floatCorner", floatCorner, 0f, 0.5f);
-        floatLocked = b(o, "floatLocked", floatLocked);
-        floatBillboard = b(o, "floatBillboard", floatBillboard);
-        floatLockBar = b(o, "floatLockBar", floatLockBar);
-        floatToast = b(o, "floatToast", floatToast);
-
-        islandShow = b(o, "islandShow", islandShow);
-        islandScale = f(o, "islandScale", islandScale, 0.6f, 1.8f);
-        islandOffsetX = f(o, "islandOffsetX", islandOffsetX, -300f, 300f);
-        islandOffsetY = f(o, "islandOffsetY", islandOffsetY, 0f, 120f);
-
-        lyricsMode = i(o, "lyricsMode", lyricsMode, 0, 2);
-        lyricsAlbumColor = b(o, "lyricsAlbumColor", lyricsAlbumColor);
-        lyricsScale = f(o, "lyricsScale", lyricsScale, 0.1f, 1.6f);
-        lyricsReveal = b(o, "lyricsReveal", lyricsReveal);
-        lyricsWordByWord = b(o, "lyricsWordByWord", lyricsWordByWord);
-        lyricsWordSpeed = f(o, "lyricsWordSpeed", lyricsWordSpeed, 0.08f, 0.8f);
-        lyricsMaxLines = i(o, "lyricsMaxLines", lyricsMaxLines, 1, 8);
-        lyricsLifeSeconds = f(o, "lyricsLifeSeconds", lyricsLifeSeconds, 2f, 20f);
-
-        lyricsDistance = f(o, "lyricsDistance", lyricsDistance, 6f, 40f);
-        lyricsSpread = f(o, "lyricsSpread", lyricsSpread, 0f, 1.5f);
-        lyricsSide = f(o, "lyricsSide", lyricsSide, -1f, 1f);
-        lyricsVerticalOffset = f(o, "lyricsVerticalOffset", lyricsVerticalOffset, -2f, 5f);
-        lyricsHorizontalOffset = f(o, "lyricsHorizontalOffset", lyricsHorizontalOffset, -5f, 5f);
-        lyricsWorldDistance = f(o, "lyricsWorldDistance", lyricsWorldDistance, 3f, 24f);
-        lyricsGlowRandomPosition = b(o, "lyricsGlowRandomPosition", lyricsGlowRandomPosition);
-        lyricsGlowRandomRange = f(o, "lyricsGlowRandomRange", lyricsGlowRandomRange, 0f, 8f);
-        lyricsPlayerRelative = b(o, "lyricsPlayerRelative", lyricsPlayerRelative);
-        lyricsFollowRotation = b(o, "lyricsFollowRotation", lyricsFollowRotation);
-        lyricsGlowSmoothing = f(o, "lyricsGlowSmoothing", lyricsGlowSmoothing, 0f, 1f);
-
-        lyricsViewMode = b(o, "lyricsViewMode", lyricsViewMode);
-        lyricsViewAnchor = i(o, "lyricsViewAnchor", lyricsViewAnchor, 0, 6);
-        lyricsViewDepth = f(o, "lyricsViewDepth", lyricsViewDepth, 3f, 30f);
-        lyricsCrosshairExclude = f(o, "lyricsCrosshairExclude", lyricsCrosshairExclude, 0.05f, 0.7f);
-        lyricsScreenMargin = f(o, "lyricsScreenMargin", lyricsScreenMargin, 0.01f, 0.3f);
-        lyricsViewSmoothing = f(o, "lyricsViewSmoothing", lyricsViewSmoothing, 0f, 1f);
-        lyricsFaceAlways = b(o, "lyricsFaceAlways", lyricsFaceAlways);
-        lyricsFitScreen = b(o, "lyricsFitScreen", lyricsFitScreen);
-
-        lyricsAnimIn = i(o, "lyricsAnimIn", lyricsAnimIn, 0, LyricAnim.IN.length - 1);
-        lyricsAnimOut = i(o, "lyricsAnimOut", lyricsAnimOut, 0, LyricAnim.OUT.length - 1);
-        lyricsAnimSpeed = f(o, "lyricsAnimSpeed", lyricsAnimSpeed, 0.3f, 3f);
-        lyricsBob = f(o, "lyricsBob", lyricsBob, 0f, 1f);
-        lyricsPulse = f(o, "lyricsPulse", lyricsPulse, 0f, 1f);
-
-        if (o.has("lyricsFont")) lyricsFont = o.get("lyricsFont").getAsString();
-        lyricsFontSize = i(o, "lyricsFontSize", lyricsFontSize, 12, 96);
-        glowIntensity = f(o, "glowIntensity", glowIntensity, 0f, 5f);
-        glowRadius = f(o, "glowRadius", glowRadius, 2f, 18f);
-
-        hudPosition = i(o, "hudPosition", hudPosition, 0, 5);
-        hudLines = i(o, "hudLines", hudLines, 2, 6);
-        hudPanel = b(o, "hudPanel", hudPanel);
+    static void start() {
+        ClientTickEvents.END_CLIENT_TICK.register(client -> tick());
     }
 
-    private static JsonObject toJson() {
-        JsonObject o = new JsonObject();
-        o.addProperty("floatWidth", floatWidth);
-        o.addProperty("floatDistance", floatDistance);
-        o.addProperty("floatHeight", floatHeight);
-        o.addProperty("floatSide", floatSide);
-        o.addProperty("floatFollowSpeed", floatFollowSpeed);
-        o.addProperty("floatOpacity", floatOpacity);
-        o.addProperty("floatCorner", floatCorner);
-        o.addProperty("floatLocked", floatLocked);
-        o.addProperty("floatBillboard", floatBillboard);
-        o.addProperty("floatLockBar", floatLockBar);
-        o.addProperty("floatToast", floatToast);
-        o.addProperty("islandShow", islandShow);
-        o.addProperty("islandScale", islandScale);
-        o.addProperty("islandOffsetX", islandOffsetX);
-        o.addProperty("islandOffsetY", islandOffsetY);
-        o.addProperty("lyricsMode", lyricsMode);
-        o.addProperty("lyricsAlbumColor", lyricsAlbumColor);
-        o.addProperty("lyricsScale", lyricsScale);
-        o.addProperty("lyricsReveal", lyricsReveal);
-        o.addProperty("lyricsWordByWord", lyricsWordByWord);
-        o.addProperty("lyricsWordSpeed", lyricsWordSpeed);
-        o.addProperty("lyricsMaxLines", lyricsMaxLines);
-        o.addProperty("lyricsLifeSeconds", lyricsLifeSeconds);
-        o.addProperty("lyricsDistance", lyricsDistance);
-        o.addProperty("lyricsSpread", lyricsSpread);
-        o.addProperty("lyricsSide", lyricsSide);
-        o.addProperty("lyricsVerticalOffset", lyricsVerticalOffset);
-        o.addProperty("lyricsHorizontalOffset", lyricsHorizontalOffset);
-        o.addProperty("lyricsWorldDistance", lyricsWorldDistance);
-        o.addProperty("lyricsGlowRandomPosition", lyricsGlowRandomPosition);
-        o.addProperty("lyricsGlowRandomRange", lyricsGlowRandomRange);
-        o.addProperty("lyricsPlayerRelative", lyricsPlayerRelative);
-        o.addProperty("lyricsFollowRotation", lyricsFollowRotation);
-        o.addProperty("lyricsGlowSmoothing", lyricsGlowSmoothing);
-        o.addProperty("lyricsViewMode", lyricsViewMode);
-        o.addProperty("lyricsViewAnchor", lyricsViewAnchor);
-        o.addProperty("lyricsViewDepth", lyricsViewDepth);
-        o.addProperty("lyricsCrosshairExclude", lyricsCrosshairExclude);
-        o.addProperty("lyricsScreenMargin", lyricsScreenMargin);
-        o.addProperty("lyricsViewSmoothing", lyricsViewSmoothing);
-        o.addProperty("lyricsFaceAlways", lyricsFaceAlways);
-        o.addProperty("lyricsFitScreen", lyricsFitScreen);
-        o.addProperty("lyricsAnimIn", lyricsAnimIn);
-        o.addProperty("lyricsAnimOut", lyricsAnimOut);
-        o.addProperty("lyricsAnimSpeed", lyricsAnimSpeed);
-        o.addProperty("lyricsBob", lyricsBob);
-        o.addProperty("lyricsPulse", lyricsPulse);
-        o.addProperty("lyricsFont", lyricsFont);
-        o.addProperty("lyricsFontSize", lyricsFontSize);
-        o.addProperty("glowIntensity", glowIntensity);
-        o.addProperty("glowRadius", glowRadius);
-        o.addProperty("hudPosition", hudPosition);
-        o.addProperty("hudLines", hudLines);
-        o.addProperty("hudPanel", hudPanel);
-        return o;
-    }
+    // ------------------------------------------------------------------ read path
 
-    static void load() {
+    private static void ensureHandler() {
+        if (handlerRegistered) return;
         try {
-            if (!Files.exists(FILE)) return;
-            apply(JsonParser.parseString(Files.readString(FILE, StandardCharsets.UTF_8)).getAsJsonObject());
-        } catch (Throwable ignored) {
-            // a broken file simply leaves the defaults in place
+            if (!Rinku.isInitialized()) return;
+            Rinku.getClient().addDisplayHandler(new CefDisplayHandlerAdapter() {
+                @Override
+                public void onTitleChange(CefBrowser browser, String title) {
+                    onTitle(browser, title);
+                }
+            });
+            handlerRegistered = true;
+            status = "Waiting for music playback";
+        } catch (Throwable error) {
+            status = "Media handler failed: " + error.getClass().getSimpleName();
         }
     }
 
-    static void save() {
-        try {
-            Files.createDirectories(FILE.getParent());
-            Files.writeString(FILE, toJson().toString(), StandardCharsets.UTF_8);
-        } catch (Throwable ignored) {
-            // settings are a convenience; never break the game over them
+    private static void tick() {
+        ensureHandler();
+        if (++tickCounter % 20 != 0) return;
+        if (handlerRegistered) {
+            for (RinkuBrowser browser : VisionBrowserClient.getTabs()) {
+                try {
+                    browser.executeJavaScript(CAPTURE_SCRIPT, "visionbrowser://media-capture", 0);
+                } catch (Throwable error) {
+                    status = "Cannot inject media script: " + error.getClass().getSimpleName();
+                }
+            }
+        }
+        if (!lastTrackKey.isEmpty() && System.currentTimeMillis() - lastPayloadAt > 5000) {
+            clearTrack("Playback stopped");
         }
     }
 
-    /** back to factory values for everything */
-    static void reset() {
-        apply(DEFAULTS);
-        FloatWindow.syncLockFromSettings();
-        save();
+    private static void onTitle(CefBrowser browser, String title) {
+        if (title == null || !title.startsWith(PREFIX)) return;
+        try {
+            String raw = URLDecoder.decode(title.substring(PREFIX.length()), StandardCharsets.UTF_8);
+            JsonObject o = JsonParser.parseString(raw).getAsJsonObject();
+            String t = str(o, "t");
+            if (t.isBlank()) return;
+            boolean on = o.has("on") && o.get("on").getAsBoolean();
+            int id = browser.getIdentifier();
+            if (!on && mediaBrowserId != -1 && mediaBrowserId != id) return; // another tab is the active source
+            long now = System.currentTimeMillis();
+            String a = str(o, "a");
+            double dur = num(o, "dur");
+            mediaBrowser = browser;
+            mediaBrowserId = id;
+            trackTitle = t;
+            artist = a;
+            album = str(o, "al");
+            if (now >= playLockUntil) playing = on;
+            positionSeconds = num(o, "pos");
+            durationSeconds = dur;
+            positionUpdatedAt = now;
+            lastPayloadAt = now;
+            if (now >= volumeLockUntil) {
+                volume = (float) Math.max(0, Math.min(1, num(o, "vol")));
+                muted = o.has("mut") && o.get("mut").getAsBoolean();
+            }
+            String key = (t + "|" + a).toLowerCase(Locale.ROOT);
+            if (!key.equals(lastTrackKey)) {
+                lastTrackKey = key;
+                status = "Finding synchronized lyrics";
+                FloatingLyrics.loadTrack(t, a, dur);
+            } else if (FloatingLyrics.hasLyrics()) {
+                status = "Lyrics synchronized";
+            }
+            String art = str(o, "art");
+            if (!art.equals(artUrl)) {
+                artUrl = art;
+                IslandArt.request(art);
+            }
+        } catch (Throwable ignored) {
+            status = "Cannot read current track";
+        }
+    }
+
+    private static String str(JsonObject o, String key) {
+        return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsString() : "";
+    }
+
+    private static double num(JsonObject o, String key) {
+        try {
+            return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsDouble() : 0;
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    private static void clearTrack(String message) {
+        mediaBrowser = null;
+        mediaBrowserId = -1;
+        trackTitle = "";
+        artist = "";
+        album = "";
+        artUrl = "";
+        playing = false;
+        positionSeconds = 0;
+        durationSeconds = 0;
+        lastTrackKey = "";
+        status = message;
+        IslandArt.request("");
+        FloatingLyrics.clear();
+    }
+
+    // ------------------------------------------------------------------ write path (commands)
+
+    private static void exec(String js) {
+        CefBrowser target = mediaBrowser;
+        if (target == null) target = VisionBrowserClient.getActiveBrowser();
+        if (target == null) return;
+        try {
+            target.executeJavaScript(js, "visionbrowser://command", 0);
+        } catch (Throwable error) {
+            status = "Command failed: " + error.getClass().getSimpleName();
+        }
+    }
+
+    static void togglePlay() {
+        long now = System.currentTimeMillis();
+        double p = positionSeconds();
+        playing = !playing;
+        positionSeconds = p;
+        positionUpdatedAt = now;
+        playLockUntil = now + 900;
+        exec(JS_TOGGLE);
+    }
+
+    static void seek(double seconds) {
+        double s = Math.max(0, durationSeconds > 0 ? Math.min(seconds, durationSeconds) : seconds);
+        positionSeconds = s;
+        positionUpdatedAt = System.currentTimeMillis();
+        exec(String.format(Locale.ROOT,
+                "(function(){" + JS_PREFIX + "if(v&&isFinite(%1$f))v.currentTime=%1$f;})();", s));
+    }
+
+    static void setVolume(float value) {
+        float v = Math.max(0f, Math.min(1f, value));
+        volume = v;
+        muted = false;
+        volumeLockUntil = System.currentTimeMillis() + 1500;
+        exec(String.format(Locale.ROOT,
+                "(function(){" + JS_PREFIX + "if(v){v.muted=false;v.volume=%1$f;}"
+                        + "var p=document.getElementById('movie_player');"
+                        + "if(p&&p.setVolume){try{p.setVolume(%2$d);}catch(e){}}})();", v, Math.round(v * 100)));
+    }
+
+    static void toggleMute() {
+        muted = !muted;
+        volumeLockUntil = System.currentTimeMillis() + 1500;
+        exec(JS_MUTE);
+    }
+
+    static void next() { exec(JS_NEXT); }
+
+    static void previous() { exec(JS_PREV); }
+
+    // ------------------------------------------------------------------ state for the UI
+
+    static boolean hasMedia() {
+        return !lastTrackKey.isEmpty() && System.currentTimeMillis() - lastPayloadAt < 5000;
+    }
+
+    static String title() { return trackTitle; }
+    static String artist() { return artist; }
+    static String album() { return album; }
+    static boolean isPlaying() { return playing; }
+    static String status() { return status; }
+    static double durationSeconds() { return durationSeconds; }
+    static float volume() { return volume; }
+    static boolean isMuted() { return muted; }
+
+    static double positionSeconds() {
+        double p = positionSeconds;
+        if (playing) p += Math.max(0, System.currentTimeMillis() - positionUpdatedAt) / 1000.0;
+        return durationSeconds > 0 ? Math.min(p, durationSeconds) : p;
+    }
+
+    // ------------------------------------------------------------------ lyrics (unchanged behaviour, plus stale-result guard)
+
+    static void fetchLyrics(String title, String artist, double duration) {
+        final String requestKey = (title + "|" + artist).toLowerCase(Locale.ROOT);
+        Thread worker = new Thread(() -> {
+            try {
+                String query = "track_name=" + URLEncoder.encode(title, StandardCharsets.UTF_8)
+                        + "&artist_name=" + URLEncoder.encode(artist, StandardCharsets.UTF_8);
+                if (duration > 0 && duration < 3600) query += "&duration=" + Math.round(duration);
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create("https://lrclib.net/api/get?" + query))
+                        .timeout(Duration.ofSeconds(12))
+                        .header("User-Agent", "VisionBrowser/0.1.0 (Minecraft Fabric mod)")
+                        .GET().build();
+                HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+                if (!requestKey.equals(lastTrackKey)) return; // track changed while the request was running
+                if (response.statusCode() != 200) {
+                    FloatingLyrics.setUnavailable(response.statusCode() == 404
+                            ? "No synchronized lyrics found" : "Lyrics service unavailable");
+                    return;
+                }
+                JsonObject json = JsonParser.parseString(response.body()).getAsJsonObject();
+                String synced = json.has("syncedLyrics") && !json.get("syncedLyrics").isJsonNull()
+                        ? json.get("syncedLyrics").getAsString() : "";
+                if (synced.isBlank()) {
+                    FloatingLyrics.setUnavailable("This track has no timed lyrics");
+                    return;
+                }
+                FloatingLyrics.setLyrics(title, artist, synced);
+            } catch (Throwable error) {
+                if (requestKey.equals(lastTrackKey)) FloatingLyrics.setUnavailable("Could not load lyrics");
+            }
+        }, "VisionBrowser-LRCLIB");
+        worker.setDaemon(true);
+        worker.start();
     }
 }

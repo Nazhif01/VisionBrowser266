@@ -87,7 +87,7 @@ final class Lyrics3D {
             if (VisionSettings.lyricsViewMode) {
                 long nowMs = System.currentTimeMillis();
                 for (Line old : lines) if (old.exitAt == 0) old.exitAt = nowMs;
-                Line v = new Line(text, cp.x, cp.y, cp.z, 1, 0, 0, 1, 0, 0, 0, yaw, pitch);
+                Line v = new Line(text, cp.x, cp.y, cp.z, 1, 0, 0, 1, 0, 0, 0, 0, yaw, pitch);
                 v.view = true;
                 lines.add(v);
                 while (lines.size() > VisionSettings.lyricsMaxLines) release(lines.remove(0));
@@ -348,7 +348,8 @@ final class Lyrics3D {
                 }
                 l.scale = VisionSettings.lyricsScale;
                 cy += l.lift;
-                if ((cp.x - cx) * lineNx + (cp.z - cz) * lineNz <= 0) continue; // seen from behind
+                boolean faceCam = VisionSettings.lyricsFaceAlways;
+                if (!faceCam && (cp.x - cx) * lineNx + (cp.z - cz) * lineNz <= 0) continue; // seen from behind
                 double dist = Math.sqrt((cp.x - cx) * (cp.x - cx) + (cp.y - cy) * (cp.y - cy) + (cp.z - cz) * (cp.z - cz));
                 alpha *= (float) Math.max(0, Math.min(1, (dist - 0.8) / 1.5)) * (float) Math.max(0, Math.min(1, (64 - dist) / 24));
                 int a255 = Math.round(alpha * 255f);
@@ -358,8 +359,11 @@ final class Lyrics3D {
                 float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}}; // TL, TR, BR, BL
                 float[] sx = new float[4], sy = new float[4], sw = new float[4];
                 boolean visible = true;
+                double[] bs = faceCam ? ViewMath.billboard(cp, cx, cy, cz, lineRx, lineRz) : new double[]{lineRx, 0, lineRz, 0, 1, 0};
                 for (int i = 0; i < 4; i++) {
-                    double wx = cx + lineRx * corner[i][0], wy = cy + corner[i][1], wz = cz + lineRz * corner[i][0];
+                    double wx = cx + bs[0] * corner[i][0] + bs[3] * corner[i][1];
+                    double wy = cy + bs[1] * corner[i][0] + bs[4] * corner[i][1];
+                    double wz = cz + bs[2] * corner[i][0] + bs[5] * corner[i][1];
                     float[] n = ndc(vp, wx - cp.x, wy - cp.y, wz - cp.z);
                     if (n[2] < 0.1f) { visible = false; break; }
                     sx[i] = (n[0] * signX * 0.5f + 0.5f) * gw;
@@ -404,19 +408,16 @@ final class Lyrics3D {
         double cx = p[0], cy = p[1], cz = p[2];
 
         // always face the player: the quad normal points from its centre to the camera, so the text is never seen from behind
-        double lineRx, lineRz;
-        if (VisionSettings.lyricsFaceAlways) {
-            double dx = cp.x - cx, dz = cp.z - cz, len = Math.hypot(dx, dz);
-            if (len < 1e-4) return;
-            lineRx = dz / len; lineRz = -dx / len;
-        } else {
-            double yaw = Math.toRadians(Minecraft.getInstance().gameRenderer.mainCamera().yRot());
-            lineRx = -Math.cos(yaw); lineRz = -Math.sin(yaw);
-        }
+        double yawNow = Math.toRadians(Minecraft.getInstance().gameRenderer.mainCamera().yRot());
+        double[] bs = VisionSettings.lyricsFaceAlways
+                ? ViewMath.billboard(cp, cx, cy, cz, -Math.cos(yawNow), -Math.sin(yawNow))
+                : new double[]{-Math.cos(yawNow), 0, -Math.sin(yawNow), 0, 1, 0};
         float[][] corner = {{-hw, hh}, {hw, hh}, {hw, -hh}, {-hw, -hh}};
         float[] sx = new float[4], sy = new float[4], sw = new float[4];
         for (int i = 0; i < 4; i++) {
-            double wx = cx + lineRx * corner[i][0], wy = cy + corner[i][1], wz = cz + lineRz * corner[i][0];
+            double wx = cx + bs[0] * corner[i][0] + bs[3] * corner[i][1];
+            double wy = cy + bs[1] * corner[i][0] + bs[4] * corner[i][1];
+            double wz = cz + bs[2] * corner[i][0] + bs[5] * corner[i][1];
             float[] n = ndc(vp, wx - cp.x, wy - cp.y, wz - cp.z);
             if (n[2] < 0.1f) return;
             sx[i] = (n[0] * signX * 0.5f + 0.5f) * gw;

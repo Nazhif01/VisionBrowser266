@@ -79,6 +79,21 @@ final class ViewMath {
         return toWorld(f, cx, cy, d);
     }
 
+    /**
+     * Full billboard basis for a quad centred at (cx,cy,cz) seen from the camera: the plane is perpendicular to the line of sight, so it
+     * never looks squashed when the player looks up or down. Returns {rx,ry,rz, ux,uy,uz} (world "up" stays up, no roll).
+     */
+    static double[] billboard(Vec3 cp, double cx, double cy, double cz, double fallbackRx, double fallbackRz) {
+        double nx = cp.x - cx, ny = cp.y - cy, nz = cp.z - cz;
+        double l = Math.sqrt(nx * nx + ny * ny + nz * nz);
+        if (l < 1e-6) return new double[]{fallbackRx, 0, fallbackRz, 0, 1, 0};
+        nx /= l; ny /= l; nz /= l;
+        double rX = nz, rZ = -nx, rl = Math.hypot(rX, rZ);
+        if (rl < 0.05) { rX = fallbackRx; rZ = fallbackRz; }
+        else { rX /= rl; rZ /= rl; }
+        return new double[]{rX, 0, rZ, ny * rZ, nz * rX - nx * rZ, -ny * rX};
+    }
+
     /** true when a box (centre x,y, half size hw,hh in NDC) touches a zone that is hard to read: the top corners or the bottom of the screen */
     static boolean blocked(double x, double y, double hw, double hh) {
         if (y - hh < -VisionSettings.lyricsBottomLimit) return true;

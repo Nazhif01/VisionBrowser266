@@ -2,6 +2,7 @@ package dev.nazhif.visionbrowser;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.KeyMapping;
@@ -26,6 +27,7 @@ public final class VisionBrowserClient implements ClientModInitializer {
         ));
 
         VisionSettings.load();
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> RemoteBrowser.shutdown());
         VisionWorldPanel.register();
         FloatingLyrics.register();
         DynamicIsland.register();

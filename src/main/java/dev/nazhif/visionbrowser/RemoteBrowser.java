@@ -61,6 +61,8 @@ final class RemoteBrowser {
     private static final Map<String, WebSocket> PROBES = new ConcurrentHashMap<>();
     private static final Map<Integer, CompletableFuture<JsonObject>> WAITING = new ConcurrentHashMap<>();
     private static volatile boolean autoLaunched;
+    private static volatile boolean resetDone;
+    private static volatile boolean launchedByMod;
     private static volatile String status = "Remote: idle";
     private static volatile boolean workerRunning;
     private static volatile int wantW = 1280, wantH = 720, appliedW = 0, appliedH = 0;
@@ -121,6 +123,10 @@ final class RemoteBrowser {
                     if (list.isEmpty()) {
                         status = "Remote: no browser on port " + PORT + " (press Launch)";
                     } else {
+                        if (!resetDone) {
+                            resetDone = true;
+                            if (VisionSettings.remoteResetTabs) list = resetTabs(list);
+                        }
                         publish(list);
                         Tab pick = null;
                         for (Tab t : tabs) if (t.id().equals(activeId)) pick = t;
@@ -133,6 +139,7 @@ final class RemoteBrowser {
                         List<Tab> list = fetchTabs();
                         if (!list.isEmpty()) {
                             publish(list);
+                            capTabs();
                             boolean found = false;
                             for (Tab t : tabs) if (t.id().equals(activeId)) found = true;
                             if (!found && !tabs.isEmpty()) attach(tabs.get(0));
@@ -148,6 +155,47 @@ final class RemoteBrowser {
                 try { Thread.sleep(1000); } catch (InterruptedException ie) { return; }
             }
         }
+    }
+
+    /** a fresh session starts with exactly one tab: every other tab (old session, old music tab) is closed */
+    private static List<Tab> resetTabs(List<Tab> list) {
+        if (list.size() <= 1) return list;
+        for (int i = 1; i < list.size(); i++) {
+            try {
+                HTTP.send(HttpRequest.newBuilder(URI.create(BASE + "/json/close/" + list.get(i).id()))
+                        .timeout(Duration.ofSeconds(2)).GET().build(), HttpResponse.BodyHandlers.ofString());
+            } catch (Throwable ignored) { }
+        }
+        try { Thread.sleep(300); } catch (InterruptedException ignored) { }
+        List<Tab> fresh = fetchTabs();
+        return fresh.isEmpty() ? list : fresh;
+    }
+
+    /** keeps the number of visible tabs under the limit by closing the least recently used ones */
+    private static void capTabs() {
+        List<Tab> vis = tabs;
+        int excess = vis.size() - VisionSettings.remoteMaxTabs;
+        for (int i = vis.size() - 1; i >= 0 && excess > 0; i--) {
+            Tab t = vis.get(i);
+            if (t.id().equals(activeId)) continue;
+            closeTab(t.id());
+            excess--;
+        }
+    }
+
+    /** closes the browser on game exit, but only when this mod started it */
+    static void shutdown() {
+        if (!launchedByMod || !VisionSettings.remoteResetTabs) return;
+        try {
+            HttpResponse<String> r = HTTP.send(HttpRequest.newBuilder(URI.create(BASE + "/json/version"))
+                    .timeout(Duration.ofSeconds(2)).GET().build(), HttpResponse.BodyHandlers.ofString());
+            String url = str(JsonParser.parseString(r.body()).getAsJsonObject(), "webSocketDebuggerUrl");
+            if (url.isEmpty()) return;
+            WebSocket w = HTTP.newWebSocketBuilder().connectTimeout(Duration.ofSeconds(2))
+                    .buildAsync(URI.create(url), new WebSocket.Listener() { }).get(2, TimeUnit.SECONDS);
+            w.sendText("{\"id\":1,\"method\":\"Browser.close\"}", true).get(2, TimeUnit.SECONDS);
+            Thread.sleep(300);
+        } catch (Throwable ignored) { }
     }
 
     /** store a fresh tab list and drop probe connections of tabs that are gone */
@@ -748,6 +796,7 @@ final class RemoteBrowser {
                         .redirectErrorStream(true)
                         .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                         .start();
+                launchedByMod = true;
                 status = "Remote: launching " + exe.getFileName() + "...";
             } catch (Throwable e) {
                 status = "Remote: launch failed (" + e.getClass().getSimpleName() + ")";

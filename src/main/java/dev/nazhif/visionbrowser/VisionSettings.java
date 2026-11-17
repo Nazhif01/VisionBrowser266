@@ -18,6 +18,8 @@ final class VisionSettings {
     // ---- the browser: a real Chromium-family browser (Brave, Chrome, Edge...) controlled through the DevTools protocol
     static volatile int remoteBrowser = 0;              // index into RemoteBrowser.NAMES
     static volatile String remotePath = "";             // used when remoteBrowser = Custom path
+    static volatile boolean remoteResetTabs = true;     // close old tabs when the session starts and close the browser when the game exits
+    static volatile int remoteMaxTabs = 5;              // oldest tabs beyond this are closed automatically
     static volatile int remoteQuality = 70;             // JPEG quality of the stream
     static volatile String systemMediaApp = "";         // optional: only follow the app whose id contains this text (e.g. "sonora")
 
@@ -67,7 +69,8 @@ final class VisionSettings {
     static volatile boolean lyricsViewMode = true;
     static volatile int lyricsViewAnchor = 0;          // 0 random, 1 top, 2 bottom, 3 upper-left, 4 upper-right, 5 lower-left, 6 lower-right
     static volatile float lyricsViewDepth = 9f;
-    static volatile float lyricsCrosshairExclude = 0.32f;
+    static volatile float lyricsCrosshairExclude = 0.24f;
+    static volatile float lyricsViewSpread = 0.6f;     // how far from the screen centre random lyrics may land (1 = whole screen)
     static volatile float lyricsScreenMargin = 0.08f;
     static volatile float lyricsViewSmoothing = 0.35f;
     static volatile boolean lyricsFaceAlways = true;
@@ -115,6 +118,8 @@ final class VisionSettings {
         systemMedia = b(o, "systemMedia", systemMedia);
         remoteBrowser = i(o, "remoteBrowser", remoteBrowser, 0, 6);
         remoteQuality = i(o, "remoteQuality", remoteQuality, 30, 100);
+        remoteResetTabs = b(o, "remoteResetTabs", remoteResetTabs);
+        remoteMaxTabs = i(o, "remoteMaxTabs", remoteMaxTabs, 2, 12);
         if (o.has("remotePath")) remotePath = o.get("remotePath").getAsString();
         if (o.has("systemMediaApp")) systemMediaApp = o.get("systemMediaApp").getAsString();
         floatWidth = f(o, "floatWidth", floatWidth, 0.6f, 7f);
@@ -159,6 +164,8 @@ final class VisionSettings {
         lyricsViewAnchor = i(o, "lyricsViewAnchor", lyricsViewAnchor, 0, 6);
         lyricsViewDepth = f(o, "lyricsViewDepth", lyricsViewDepth, 3f, 30f);
         lyricsCrosshairExclude = f(o, "lyricsCrosshairExclude", lyricsCrosshairExclude, 0.05f, 0.7f);
+        lyricsViewSpread = f(o, "lyricsViewSpread", lyricsViewSpread, 0.2f, 1f);
+        if (i(o, "configVersion", 0, 0, 1000) < 2) lyricsCrosshairExclude = 0.24f;   // closer default for settings saved before v2
         lyricsScreenMargin = f(o, "lyricsScreenMargin", lyricsScreenMargin, 0.01f, 0.3f);
         lyricsViewSmoothing = f(o, "lyricsViewSmoothing", lyricsViewSmoothing, 0f, 1f);
         lyricsFaceAlways = b(o, "lyricsFaceAlways", lyricsFaceAlways);
@@ -231,6 +238,10 @@ final class VisionSettings {
         o.addProperty("lyricsViewAnchor", lyricsViewAnchor);
         o.addProperty("lyricsViewDepth", lyricsViewDepth);
         o.addProperty("lyricsCrosshairExclude", lyricsCrosshairExclude);
+        o.addProperty("lyricsViewSpread", lyricsViewSpread);
+        o.addProperty("configVersion", 2);
+        o.addProperty("remoteResetTabs", remoteResetTabs);
+        o.addProperty("remoteMaxTabs", remoteMaxTabs);
         o.addProperty("lyricsScreenMargin", lyricsScreenMargin);
         o.addProperty("lyricsViewSmoothing", lyricsViewSmoothing);
         o.addProperty("lyricsFaceAlways", lyricsFaceAlways);

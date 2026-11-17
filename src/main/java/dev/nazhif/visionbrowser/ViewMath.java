@@ -120,8 +120,11 @@ final class ViewMath {
         }
         ThreadLocalRandom r = ThreadLocalRandom.current();
         double bestX = 0, bestY = minY, bestScore = -1;
-        for (int t = 0; t < 60; t++) {
-            double x = limX <= 0 ? 0 : r.nextDouble(-limX, limX), y = limY <= 0 ? 0 : r.nextDouble(-limY, limY);
+        // keep random spots close to the middle: only a fraction of the free screen is used (always wide enough to clear the crosshair)
+        double spread = VisionSettings.lyricsViewSpread;
+        double rangeX = limX * spread, rangeY = Math.max(limY * spread, Math.min(limY, minY + 0.15));
+        for (int t = 0; t < 120; t++) {
+            double x = rangeX <= 0 ? 0 : r.nextDouble(-rangeX, rangeX), y = rangeY <= 0 ? 0 : r.nextDouble(-rangeY, rangeY);
             boolean onCrosshair = Math.abs(x) - hwN < exclude && Math.abs(y) - hhN < exclude;
             if (onCrosshair || blocked(x, y, hwN, hhN)) continue;
             double score = 1e9;
